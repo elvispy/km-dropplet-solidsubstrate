@@ -25,7 +25,7 @@ using .problemStructsAndFunctions # Specialized structs and functions to be used
 
 function solveMotion(; # <== Keyword Arguments! 
     # OBS: All units are in CGS!
-    undisturbed_radius::Float64 = 2.38,  # Radius of the undeformed spherical sphere 
+    undisturbed_radius::Float64 = .238,  # Radius of the undeformed spherical sphere 
     initial_height::Float64 = Inf,    # Initial position of the sphere center of mass of the sphere (Inf = start barely touching)
     initial_velocity::FLoat64 = -1.0, # Initial velocity of the sphere 
     initial_amplitude::Vector{Float64} = Float64[], # Initial amplitudes of the dropplet (Default = undisturbed) OBS: First index is A_1
@@ -34,7 +34,7 @@ function solveMotion(; # <== Keyword Arguments!
     g::Float6 = 9.8065e+2,          # Gravitational constant
     harmonics_qtt::Int64 = 20,      # Number of harmonics to be used 
     nb_pressure_samples::Int64 = NaN,      # Number of intervals in contact radius (NaN = Equal to number of harmonics)
-    max_dt::Float64 = 1e-2,         # maximum allowed temporal time step
+    max_dt::Float64 = 0.01,         # maximum allowed temporal time step
     angle_tol::Float64 = 5/360 * 2 * pi, # Angle tolerance to accept a solution (in radians) 
     spatial_tol::Float64 = 1e-8,    # Tolerance to accept that dropplet touches the substrate
     simulation_time::Float64 = 10.0,# Maximum allowed time
@@ -50,10 +50,13 @@ function solveMotion(; # <== Keyword Arguments!
     # Dimensionless Units
     time_unit = undisturbed_radius/initial_velocity; # Temporal dimensionless number
     length_unit = rS;
-    velocity_unit = initial_velocity;
-    reynolds_number = initial_velocity.^2/(g*undisturbed_radius);
-    weber_number = rhoS * undisturbed_radius * initial_velocity.^2 / sigmaS; # Weber's number of the dropplet
-
+    velocity_unit = abs(initial_velocity);
+    pressure_unit = rhoS * velocity_unit^2;
+    froude_nb   = initial_velocity.^2/(g*undisturbed_radius);
+    weber_nb    = rhoS * undisturbed_radius * initial_velocity.^2 / sigmaS; # Weber's number of the dropplet
+    reynolds_nb = undisturbed_radius * velocity_unit / nu; # Reynolds' number
+    mS = 4*pi*undisturbed_radius^3 * rhoS / 3;
+    mass_unit = rhoS * length_unit^3;
 
     ## Initial conditions
     # Set dropplet's sphere height initial conditions
@@ -75,8 +78,10 @@ function solveMotion(; # <== Keyword Arguments!
         amplitudes_velocities = amplitudes_velocities/velocity_unit;
     end
 
+    initial_pressure_coefficients = zeros((harmonics_qtt, )) / pressure_unit; # Just to emphasize the units of these coefficients.
+
     if max_dt == 0
-        Δt = 1e-2; 
+        Δt = 0.01; 
     else 
         Δt = max_dt/time_unit; 
     end
@@ -94,8 +99,32 @@ function solveMotion(; # <== Keyword Arguments!
     grow_dt = false; # THis variable controls how fast Δt can grow
     iii = 0; jjj = 0; # Indexes to keep track how small is Δt compared to max_dt
 
+    f(n::Integer) = sqrt(n .* (n+2) .* (n-1) ./ weber_nb);
+
+    omegas_frequencies = f(1:harmonics_qtt)';
+
+    ODE_matrices = zeros(2, 2, harmonics_qtt); # Y' = -PDP^-1 Y + B ==> (exp(tD)*Y)' = P^-1 B;
+    ODE_matrices[1, 1, :] =  ones(1, harmonics_qtt);
+    ODE_matrices[1, 2, :] =  ones(1, harmonics_qtt);
+    ODE_matrices[2, 1, :] =  1.0im * omegas_frequencies;
+    ODE_matrices[2, 2, :] = -1.0im * omegas_frequencies;
+
+    ODE_inverse_matrices = 1/2 * ones(2, 2, N);
+    ODE_inverse_matrices[1, 2, :] = -0.5im ./ omegas_frequencies;
+    ODE_inverse_matrices[2, 2, :] =  0.5im ./ omegas_frequencies;
+
+    PROBLEM_CONSTANTS = Dict(
+        "froude_nb" => froude_nb,
+        "weber_nb"  => weber_nb, 
+        "ball_mass" => mS/mass_unit;
+        "ODE_matrices" => ODE_matrices,
+        "ODE_inverse_matrices" => ODE_inverse_matrices
+    )
+
     probable_next_conditions = Array{ProblemConditions}(undef, 5);
-    current_conditions = ProblemConditions(harmonics_qtt, initial_amplitude, amplitudes_velocities, [], Δt);
+    current_conditions = ProblemConditions(harmonics_qtt, initial_amplitude, 
+            amplitudes_velocities, initial_pressure_coefficients, Δt, 
+            initial_height, initial_velocity);
 
     if ("julia" in readdir());  cd("julia\\");  end
     if ("1_code" in readdir()); cd("1_code\\"); end
@@ -150,7 +179,8 @@ function solveMotion(; # <== Keyword Arguments!
         recalculate = false;
 
         # First, we try to solve with the same number of contact points
-        probable_next_conditions[3], errortan[3] = getNextStep();
+        probable_next_conditions[3], errortan[3] = getNextStep(current_conditions, new_number_contact_points, Δt, spatial_step, 
+                spatial_tol, PROBLEM_CONSTANTS);
 
         if abs(errortan[3]) < 1e-8 # If almost no error, we accept the solution
             
