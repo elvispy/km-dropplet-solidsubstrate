@@ -1,30 +1,35 @@
+using LegendrePolynomials
 
-
+include("./theta_from_cylindrical.jl");
 # TODO: Properly document this function
 """
-    getNextStep:
-    Tries to advance one step (Δt) in the solution of the dropplet / solid substrate interaction
+    getNextStep
+Tries to advance one step (Δt) in the solution of the dropplet / solid substrate interaction
 """
-function getNextStep(current_conditions::ProblemConditions, new_number_contact_points::Integer, Δt::FLoat64, 
+function getNextStep(current_conditions::ProblemConditions, new_number_contact_points::Int64, Δt::Float64, 
     spatial_step::Float64, spatial_tol::Float64, PROBLEM_CONSTANTS
     )::Tuple{ProblemConditions, Float64}
 
     if new_number_contact_points < 0 || new_number_contact_points > 100 # TODO: 
         errortan = Inf;
-        probable_next_conditions = ProblemConditions(nb_harmonics, 
-            [NaN], [NaN], [NaN], NaN, NaN, NaN
+        probable_next_conditions = ProblemConditions(NaN, 
+            [NaN], [NaN], [NaN], NaN, NaN, NaN, NaN, NaN
         )
     else
         # Try with same pressure distribution
-        pressure_amplitudes_tentative = current_conditions.pressure_amplitudes;
+        probable_next_conditions = ProblemConditions(NaN, [NaN], [NaN], 
+            current_conditions.pressure_amplitudes, NaN, NaN, NaN, NaN, NaN);
+        #pressure_amplitudes_tentative = current_conditions.pressure_amplitudes;
         iteration = 0;
 
         while iteration < 100
             iteration = iteration + 1;
-            tentative_problem_conditions = advance_conditions(current_conditions, 
-                                                        PROBLEM_CONSTANTS, pressure_amplitudes_tentative);
+
+            # Try to advance time
+            probable_next_conditions = advance_conditions(current_conditions, 
+                                                        PROBLEM_CONSTANTS, probable_next_conditions, new_number_contact_points, Δt);
             
-            probable_next_conditions, is_it_acceptable = update_tentative(tentative_problem_conditions, spatial_tol);
+            probable_next_conditions, is_it_acceptable = update_tentative(probable_next_conditions, spatial_tol);
             
             if is_it_acceptable == true
                 break;
@@ -42,8 +47,11 @@ end # end main function definition
 
 
 function advance_conditions(current_conditions::ProblemConditions, PROBLEM_CONSTANTS, 
-        pressure_amplitudes_tentative::Array{Float64}
+    probable_next_conditions::ProblemConditions, new_nb_contact_points::Int64, Δt::Float64
     )::ProblemConditions
+
+
+    pressure_amplitudes_tentative = probable_next_conditions.pressure_amplitudes;
 
     nb_harmonics = current_conditions.nb_harmonics
     Y_old = zeros(2, nb_harmonics); # Deformation amplitudes in the new coordinate system but at time t.
@@ -121,8 +129,31 @@ function advance_conditions(current_conditions::ProblemConditions, PROBLEM_CONST
         amplitudes_tent,
         amplitudes_velocities_tent,
         pressure_amplitudes_tentative,
+        current_conditions.current_time + Δt,
         Δt,
         new_center_of_mass,
-        new_CM_velocity
+        new_CM_velocity,
+        new_nb_contact_points
     )
+end
+
+
+"""
+    update_tentative()
+
+Returns a probable next solution and a flag to decide wether the new solution is acceptable or not
+"""
+function update_tentative(probable_next_conditions::ProblemConditions, spatial_tol::Float64
+    )::Tuple{ProblemConditions, Bool}
+
+    heights = fill(probable_next_conditions.center_of_mass, (probable_next_conditions.number_contact_points, ));
+
+    for ii = 1:probable_next_conditions.number_contact_points
+        θ = theta_from_cylindrical()
+        heights[ii] = 
+    end
+
+
+
+
 end

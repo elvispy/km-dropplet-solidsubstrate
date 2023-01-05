@@ -4,10 +4,19 @@
     main
 """
 
-# Name of the exporting module
 module km_main
+
 # Exports
 export solveMotion
+
+
+#using Printf;
+#using Plots;
+#default(legend = false);
+#using JLD2, FileIO;
+#using Dates;
+#using CSV;
+#using DataFrames;
 
 
 #Imports
