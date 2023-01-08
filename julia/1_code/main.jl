@@ -11,9 +11,10 @@ export solveMotion
 
 
 #using Printf;
-#using Plots;
-#default(legend = false);
-#using JLD2, FileIO;
+using Plots;
+default(legend = false);
+using JLD2, FileIO;
+using Polynomials;
 #using Dates;
 #using CSV;
 #using DataFrames;
@@ -36,7 +37,7 @@ function solveMotion(; # <== Keyword Arguments!
     # OBS: All units are in CGS!
     undisturbed_radius::Float64 = .238,  # Radius of the undeformed spherical sphere 
     initial_height::Float64 = Inf,    # Initial position of the sphere center of mass of the sphere (Inf = start barely touching)
-    initial_velocity::FLoat64 = -1.0, # Initial velocity of the sphere 
+    initial_velocity::Float64 = -1.0, # Initial velocity of the sphere 
     initial_amplitude::Vector{Float64} = Float64[], # Initial amplitudes of the dropplet (Default = undisturbed) OBS: First index is A_1
     rhoS::Float64 = NaN,            # Sphere's density
     sigmaS::Float64 = NaN,          # Sphere's Surface Tension
@@ -108,6 +109,40 @@ function solveMotion(; # <== Keyword Arguments!
     grow_dt = false; # THis variable controls how fast Δt can grow
     iii = 0; jjj = 0; # Indexes to keep track how small is Δt compared to max_dt
 
+    #= if isfile("./2_pipeline/LEGENDRE_POLYNOMIALS.jld2") == true
+        LEGENDRE_POLYNOMIALS = load_object("LEGENDRE_POLYNOMIALS.jld2");
+        n = length(LEGENDRE_POLYNOMIALS);
+        if n > harmonics_qtt
+            LEGENDRE_POLYNOMIALS = LEGENDRE_POLYNOMIALS[1:harmonics_qtt];
+        else:
+     =#   
+    LEGENDRE_POLYNOMIALS = LP(harmonics_qtt);
+    LPdX = Vector{Function}(undef, harmonics_qtt);
+    polynomials_antiderivatives = Matrix{Function}(undef, harmonics_qtt, harmonics_qtt);
+
+    # This function calculates the primitive of P/x:  (P::Polynomial) -> ∫P(x) * x^(-1) dx
+    function integrate_poly(p::Polynomial{Float64, :x})::Function
+        y = integrate(Polynomial([p.coeffs[ii] for ii = 2:degree(p)]));
+        return (t) -> y(t) + p.coeffs[1] * log(t)
+    end
+
+    @variables x
+    for ii = 1:harmonics_qtt
+        for jj = 1:ii
+            # This data structure at [ii, jj] will return the integral of P_{ii-1} * P_{jj-1}
+            polynomials_antiderivatives[ii, jj] = integrate( LEGENDRE_POLYNOMIALS[ii] * LEGENDRE_POLYNOMIALS[jj])
+        end
+        # This array has the integral of P_{ii-1}/x
+        LPdX[ii] = integrate_poly(LEGENDRE_POLYNOMIALS[ii]);
+    end
+
+    # https://www.wolframalpha.com/input?i=int_1%5E2+1%2F8+%2815+x+-+70+x%5E3+%2B+63+x%5E5%29%2Fx+dx
+    @assert isapprox(LPdX[5](2) - LPdX[5](1), 1817/60; rtol=1e-5) "∫ P_5(x)/x dx not properly integrated!"
+    
+    # https://www.wolframalpha.com/input?i=int_%7B0.5%7D%5E%7B1.2%7D+1%2F8+%283+-+30+x%5E2+%2B+35+x%5E4%29%2Fx+dx
+    @assert isapprox(LPdX[4](1.2) - LPdX[4](0.5), 0.296691; atol=1e-5) "∫ P_4(x)/x dx not properly integrated!"
+    
+
     f(n::Integer) = sqrt(n .* (n+2) .* (n-1) ./ weber_nb);
 
     omegas_frequencies = f(1:harmonics_qtt)';
@@ -127,13 +162,16 @@ function solveMotion(; # <== Keyword Arguments!
         "weber_nb"  => weber_nb, 
         "ball_mass" => mS/mass_unit;
         "ODE_matrices" => ODE_matrices,
-        "ODE_inverse_matrices" => ODE_inverse_matrices
+        "ODE_inverse_matrices" => ODE_inverse_matrices,
+        "poly_antiderivatives" => polynomials_antiderivatives,
+        "LEGENDRE_POLYNOMIALS" => LEGENDRE_POLYNOMIALS
     )
 
     probable_next_conditions = Array{ProblemConditions}(undef, 5);
     current_conditions = ProblemConditions(harmonics_qtt, initial_amplitude, 
-            amplitudes_velocities, initial_pressure_coefficients, Δt, 
-            initial_height, initial_velocity);
+            amplitudes_velocities, initial_pressure_coefficients, 0.0, Δt, 
+            initial_height, initial_velocity, 0);
+    previous_conditions = similar(current_conditions); # TODO: Define this array properly to implement BDF2.
 
     if ("julia" in readdir());  cd("julia\\");  end
     if ("1_code" in readdir()); cd("1_code\\"); end

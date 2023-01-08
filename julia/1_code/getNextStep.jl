@@ -7,7 +7,7 @@ include("./theta_from_cylindrical.jl");
 Tries to advance one step (Δt) in the solution of the dropplet / solid substrate interaction
 """
 function getNextStep(current_conditions::ProblemConditions, new_number_contact_points::Int64, Δt::Float64, 
-    spatial_step::Float64, spatial_tol::Float64, PROBLEM_CONSTANTS
+    Δr::Float64, spatial_tol::Float64, PROBLEM_CONSTANTS
     )::Tuple{ProblemConditions, Float64}
 
     if new_number_contact_points < 0 || new_number_contact_points > 100 # TODO: 
@@ -29,7 +29,7 @@ function getNextStep(current_conditions::ProblemConditions, new_number_contact_p
             probable_next_conditions = advance_conditions(current_conditions, 
                                                         PROBLEM_CONSTANTS, probable_next_conditions, new_number_contact_points, Δt);
             
-            probable_next_conditions, is_it_acceptable = update_tentative(probable_next_conditions, spatial_tol);
+            probable_next_conditions, is_it_acceptable = update_tentative(probable_next_conditions, Δr, Δt, spatial_tol, PROBLEM_CONSTANTS);
             
             if is_it_acceptable == true
                 break;
@@ -139,19 +139,44 @@ end
 
 
 """
-    update_tentative()
+    update_tentative(::ProblemConditions, ::Float64)::Tuple{ProblemConditions, Bool}
 
 Returns a probable next solution and a flag to decide wether the new solution is acceptable or not
 """
-function update_tentative(probable_next_conditions::ProblemConditions, spatial_tol::Float64
+function update_tentative(probable_next_conditions::ProblemConditions, Δr::Float64, 
+    Δt::Float64, spatial_tol::Float64, PROBLEM_CONSTANTS::Dict
     )::Tuple{ProblemConditions, Bool}
 
+    harmonics_qtt = probable_next_conditions.nb_harmonics;
+    is_it_acceptable = true
     heights = fill(probable_next_conditions.center_of_mass, (probable_next_conditions.number_contact_points, ));
 
     for ii = 1:probable_next_conditions.number_contact_points
-        θ = theta_from_cylindrical()
-        heights[ii] = 
+        θ = theta_from_cylindrical(Δr*(ii-1), probable_next_conditions.deformation_amplitudes)
+        heights[ii] = heights[ii] +  cos(θ) * (sum(amplitudes .* (collectPl(cos(θ), lmax = order).parent)) + 1);
+        if abs(heights[ii]) > spatial_tol
+            is_it_acceptable = false;
+            break;
+        end
     end
+    if is_it_acceptable == false
+        # Tentative one: Modify the discrete amplitudes, find out the new amplitudes and the consequent pressure distribution.
+        θ = theta_from_cylindrical(Δr * probable_next_conditions.number_contact_points, 
+                                        probable_next_conditions.deformation_amplitudes);
+        
+        int_endpoint = cos(θ);
+
+        intermediate_amplitudes = zeros(Float64, (harmonics_qtt, ));
+        for ii = 2:harmonics_qtt
+
+            # Integrating from -1 (pi) to cos(θ) (θ)
+            intermediate_amplitudes[ii] = PROBLEM_CONSTANTS["LEGENDRE_POLYNOMIALS"][ii+1](int_endpoint) - PROBLEM_CONSTANTS["LEGENDRE_POLYNOMIALS"][ii+1](-1)
+            intermediate_amplitudes[ii] = sum([PROBLEM_CONSTANTS["poly_antiderivatives"][ii, jj] for jj = 4:10]) # TODO FIX THIS
+
+        end
+    end
+
+    return probable_next_conditions, is_it_acceptable
 
 
 
