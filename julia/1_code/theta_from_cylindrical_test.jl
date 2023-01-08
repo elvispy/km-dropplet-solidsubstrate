@@ -40,7 +40,7 @@ module tester
         amp = [0.0, 0.0, 0.1, 0.2, 0.3];
         test_amplitudes(range(0.0, 0.95, length = 5), amp);
         amp[3] = 0.5;
-        test_amplitudes(range(0.1, 0.87, length = 5), amp);
+        test_amplitudes(range(0.0, 0.87, length = 5), amp);
     end
 end
 
