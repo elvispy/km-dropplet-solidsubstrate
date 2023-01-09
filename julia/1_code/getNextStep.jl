@@ -135,7 +135,6 @@ function advance_conditions(probable_next_conditions::ProblemConditions, previou
     new_center_of_mass = (new_CM_velocity_times_dt - sum(coefs[1:n] .* exct.(1:n, "center_of_mass")));
     new_center_of_mass /= coefs[end];
 
-    #---#---#---#---#---
     return ProblemConditions(
         nb_harmonics,
         amplitudes_tent,
