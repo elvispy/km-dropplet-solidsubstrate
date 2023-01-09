@@ -147,7 +147,7 @@ function solveMotion(; # <== Keyword Arguments!
 
     omegas_frequencies = f(1:harmonics_qtt)';
 
-    ODE_matrices = zeros(2, 2, harmonics_qtt); # Y' = -PDP^-1 Y + B ==> (exp(tD)*Y)' = P^-1 B;
+    ODE_matrices = zeros(2, 2, harmonics_qtt); # Y' = -PDP^-1 Y + B ==> (exp(tD)*Y)' = e^(tD) P^-1 B;
     ODE_matrices[1, 1, :] =  ones(1, harmonics_qtt);
     ODE_matrices[1, 2, :] =  ones(1, harmonics_qtt);
     ODE_matrices[2, 1, :] =  1.0im * omegas_frequencies;
@@ -164,7 +164,8 @@ function solveMotion(; # <== Keyword Arguments!
         "ODE_matrices" => ODE_matrices,
         "ODE_inverse_matrices" => ODE_inverse_matrices,
         "poly_antiderivatives" => polynomials_antiderivatives,
-        "LEGENDRE_POLYNOMIALS" => LEGENDRE_POLYNOMIALS
+        "LEGENDRE_POLYNOMIALS" => LEGENDRE_POLYNOMIALS,
+        "LPdX" => LPdX
     )
 
     probable_next_conditions = Array{ProblemConditions}(undef, 5);
