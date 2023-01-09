@@ -6,7 +6,7 @@ include("./theta_from_cylindrical.jl");
     getNextStep
 Tries to advance one step (Δt) in the solution of the dropplet / solid substrate interaction
 """
-function getNextStep(current_conditions::ProblemConditions, new_number_contact_points::Int64, Δt::Float64, 
+function getNextStep(previous_conditions::ProblemConditions, new_number_contact_points::Int64, Δt::Float64, 
     Δr::Float64, spatial_tol::Float64, PROBLEM_CONSTANTS
     )::Tuple{ProblemConditions, Float64}
 
@@ -18,7 +18,7 @@ function getNextStep(current_conditions::ProblemConditions, new_number_contact_p
     else
         # Try with same pressure distribution
         probable_next_conditions = ProblemConditions(NaN, [NaN], [NaN], 
-            current_conditions.pressure_amplitudes, NaN, NaN, NaN, NaN, NaN);
+            previous_conditions[end].pressure_amplitudes, NaN, NaN, NaN, NaN, NaN);
         #pressure_amplitudes_tentative = current_conditions.pressure_amplitudes;
         iteration = 0;
 
@@ -26,10 +26,10 @@ function getNextStep(current_conditions::ProblemConditions, new_number_contact_p
             iteration = iteration + 1;
 
             # Try to advance time
-            probable_next_conditions = advance_conditions(current_conditions, 
-                                                        PROBLEM_CONSTANTS, probable_next_conditions, new_number_contact_points, Δt);
+            probable_next_conditions = advance_conditions(probable_next_conditions, 
+                previous_conditions, new_number_contact_points, Δt, PROBLEM_CONSTANTS);
             
-            probable_next_conditions, is_it_acceptable = update_tentative(probable_next_conditions, Δr, Δt, spatial_tol, PROBLEM_CONSTANTS);
+            probable_next_conditions, is_it_acceptable = update_tentative(probable_next_conditions, previous_conditions, Δr, Δt, spatial_tol, PROBLEM_CONSTANTS);
             
             if is_it_acceptable == true
                 break;
@@ -46,8 +46,165 @@ function getNextStep(current_conditions::ProblemConditions, new_number_contact_p
 end # end main function definition
 
 
-function advance_conditions(current_conditions::ProblemConditions, PROBLEM_CONSTANTS, 
-    probable_next_conditions::ProblemConditions, new_nb_contact_points::Int64, Δt::Float64
+function advance_conditions(probable_next_conditions::ProblemConditions, previous_conditions::Union{ProblemConditions, Vector{ProblemConditions}},  
+    new_nb_contact_points::Int64, Δt::Float64, PROBLEM_CONSTANTS
+    )::ProblemConditions
+
+    if previous_conditions <: ProblemConditions; previous_conditions = [previous_conditions]; end
+    n = length(previous_conditions); # Determines the order of the method
+    1 ≤ n ≤ 2 ? nothing : throw("Only implicit euler and BDF-2 were implemented");
+
+    nb_harmonics = current_conditions.nb_harmonics
+    pressure_amplitudes_tentative = probable_next_conditions.pressure_amplitudes;
+
+    # Deformation amplitudes in the new coordinate system at all necessary times
+    Y  = zeros(Float64, n+1, nb_harmonics, 2); 
+    # Independent term (pressure term) in new coordinates and at all necessary times. (nb of times used, nb of harmonics, Spatial dimension)
+    PB = zeros(Float64, 1, nb_harmonics, 2); 
+
+    amplitudes_tent = zeros(Float64, (nb_harmonics, ));
+    amplitudes_velocities_tent = zeros(Float64, (nb_harmonics, ));
+
+    # Array of coefs sutch that coeffs .* (exp(tD) * Y) ≈ PB^{k+1}
+    if n == 1
+        coefs = [-1.0, 1.0];
+    elseif n == 2
+        rk = Δt/previous_conditions[end].dt;
+        ak = (1+2rk)/(1+rk);
+        bk = -(1+rk);
+        ck = rk^2/(1+rk);
+        coefs = [ck, bk, ak]; 
+    end
+
+
+    
+    for ii = 2:nb_harmonics
+        #Translating the problem into new coordinates
+        PB[1, ii, :] = PROBLEM_CONSTANTS["ODE_inverse_matrices"][:, :, ii] * 
+            [0; -ii * pressure_amplitudes_tentative[ii]];
+        
+        for jj = 1:n
+            Y[jj, ii, :] = PROBLEM_CONSTANTS["ODE_inverse_matrices"][:, :, ii] * 
+                [previous_conditions[jj].deformation_amplitudes[ii]; previous_conditions[jj].velocities_amplitudes[ii]];
+        end
+
+        # Extracting tentative solution
+        ω_i = PROBLEM_CONSTANTS["omegas_frequencies"][ii];
+        diagexp(dt::Float64) = exp(diagm(-[-1.0im * dt * ω_i, 1.0im * dt * ω_i]));
+        dt(jj::Int) = Δt + previous_conditions[end].current_time - previous_conditions[jj].current_time;
+
+        rhs_vector = zeros(Float64, (2, ));
+        for jj = 1:n
+            rhs_vector = rhs_vector + coefs[jj] * diagexp(dt(jj)) * Y[jj, ii, :]
+        end
+        Y[end, ii, :] = (Δt * PB[1, ii, :]  - rhs_vector)/ coefs[end] 
+        
+        
+        Y[end, ii, :] = PROBLEM_CONSTANTS["ODE_matrices"][:, :, ii] * Y[end, ii, :];        
+    end
+
+    amplitudes_tent = Y[end, :, 1];
+    amplitudes_velocities_tent = Y[end, :, 2];
+
+    exct(jj::Int, field::String) = previous_conditions[jj].Symbol(field);
+    new_CM_velocity_times_dt = - sum(coefs[1:n] .* exct.(1:n, "center_of_mass_velocity")) * Δt;
+
+    Cl(l::Integer) = nb_harmonics >= l >= 1 ? l*(l-1)/(2*l-1) : 0;
+    Dl(l::Integer) = nb_harmonics >= l >= 1 ? (l+2) * (l+1) / (2*l + 3) : 0;
+
+    new_CM_velocity_times_dt +=  - Δt^2 * PROBLEM_CONSTANTS["froude_nb"]; 
+    #Special case: First harmonics
+    new_CM_velocity_times_dt +=  - Δt^2 * pressure_amplitudes_tentative[1] 
+    # General case
+    for ll = 2:(nb_harmonics-1)
+        new_CM_velocity_times_dt +=   4 * pi * Δt^2 *
+            amplitudes_tent[ll] / (2*ll+1) * (
+                Cl(ll) * pressure_amplitudes_tentative[ll-1] - 
+                Dl(ll) * pressure_amplitudes_tentative[ll+1]
+            ) 
+    end
+
+    # Special case: Last harmonic
+    new_CM_velocity_times_dt +=  Δt^2 * 4 * pi * 
+        amplitudes_tent[nb_harmonics] / (2 * nb_harmonics + 1) * (
+            Cl(nb_harmonics) * pressure_amplitudes_tentative[nb_harmonics - 1]
+        ) 
+
+    new_CM_velocity_times_dt /= coefs[end];
+    
+    new_center_of_mass = (new_CM_velocity_times_dt - sum(coefs[1:n] .* exct.(1:n, "center_of_mass")));
+    new_center_of_mass /= coefs[end];
+
+    #---#---#---#---#---
+    return ProblemConditions(
+        nb_harmonics,
+        amplitudes_tent,
+        amplitudes_velocities_tent,
+        pressure_amplitudes_tentative,
+        current_conditions.current_time + Δt,
+        Δt,
+        new_center_of_mass,
+        new_CM_velocity_times_dt/Δt,
+        new_nb_contact_points
+    )
+end
+
+
+"""
+    update_tentative(::ProblemConditions, ::Float64)::Tuple{ProblemConditions, Bool}
+
+Returns a probable next solution and a flag to decide wether the new solution is acceptable or not
+"""
+function update_tentative(probable_next_conditions::ProblemConditions, previous_conditions::Vector{ProblemConditions}, 
+    Δr::Float64, Δt::Float64, spatial_tol::Float64, PROBLEM_CONSTANTS::Dict
+    )::Tuple{ProblemConditions, Bool}
+
+    harmonics_qtt = probable_next_conditions.nb_harmonics;
+    is_it_acceptable = true
+    heights = fill(probable_next_conditions.center_of_mass, (probable_next_conditions.number_contact_points, ));
+
+    for ii = 1:probable_next_conditions.number_contact_points
+        θ = theta_from_cylindrical(Δr*(ii-1), probable_next_conditions.deformation_amplitudes)
+        heights[ii] = heights[ii] +  cos(θ) * (sum(amplitudes .* (collectPl(cos(θ), lmax = order).parent)) + 1);
+        if abs(heights[ii]) > spatial_tol
+            is_it_acceptable = false;
+            break;
+        end
+    end
+    if is_it_acceptable == false
+        # Tentative one: Modify the discrete amplitudes, find out the new amplitudes and the consequent pressure distribution.
+        θ = theta_from_cylindrical(Δr * probable_next_conditions.number_contact_points, 
+                                        probable_next_conditions.deformation_amplitudes);
+        
+
+        int_endpoint = cos(θ);
+        d = 1 + sum([probable_next_conditions.deformation_amplitudes[ii] * (mod(ii, 2) == 0 ? 1 : -1)
+                            for ii = 1:nb_harmonics]);
+        intermediate_amplitudes = zeros(Float64, (harmonics_qtt, ));
+        for ii = 2:harmonics_qtt
+            # Integrating from cos(θ) to 1 (known amplitude)
+            intermediate_amplitudes[ii] = PROBLEM_CONSTANTS["LEGENDRE_POLYNOMIALS"][ii](1) - PROBLEM_CONSTANTS["LEGENDRE_POLYNOMIALS"][ii](int_endpoint)
+            f = PROBLEM_CONSTANTS["poly_antiderivatives"][ii, jj];
+            new_tentative_amplitude_1 = probable_next_conditions.deformation_amplitudes .* 
+                    [f(1) - f(int_endpoint)  for jj = 2:harmonics_qtt]
+            intermediate_amplitudes[ii] = intermediate_amplitudes[ii] + sum(new_tentative_amplitude_1) # TODO FIX THIS
+
+            # Integrating from -1 to cos(θ) (flat surface)
+            g = PROBLEM_CONSTANTS["LPdX"][ii]
+            intermediate_amplitudes[ii] = intermediate_amplitudes[ii] - d * (g(int_endpoint) - g(-1)); 
+        end
+    end
+
+    return probable_next_conditions, is_it_acceptable
+
+
+
+
+end
+
+
+function advance_conditions_dep(probable_next_conditions::ProblemConditions, current_conditions::ProblemConditions,  
+    new_nb_contact_points::Int64, Δt::Float64, PROBLEM_CONSTANTS
     )::ProblemConditions
 
 
@@ -80,7 +237,7 @@ function advance_conditions(current_conditions::ProblemConditions, PROBLEM_CONST
         Y_tent[:, ii] = PROBLEM_CONSTANTS["ODE_matrices"][:, :, ii] * Y_tent[:, ii];
         
         amplitudes_tent[ii] = Y_tent[1, ii];
-        amplitudes_velocities_tent = Y_tent[2, ii];
+        amplitudes_velocities_tent[ii] = Y_tent[2, ii];
     end
 
     # TODO: Make this integration exact assuming Al and Bl linear.
@@ -135,50 +292,4 @@ function advance_conditions(current_conditions::ProblemConditions, PROBLEM_CONST
         new_CM_velocity,
         new_nb_contact_points
     )
-end
-
-
-"""
-    update_tentative(::ProblemConditions, ::Float64)::Tuple{ProblemConditions, Bool}
-
-Returns a probable next solution and a flag to decide wether the new solution is acceptable or not
-"""
-function update_tentative(probable_next_conditions::ProblemConditions, Δr::Float64, 
-    Δt::Float64, spatial_tol::Float64, PROBLEM_CONSTANTS::Dict
-    )::Tuple{ProblemConditions, Bool}
-
-    harmonics_qtt = probable_next_conditions.nb_harmonics;
-    is_it_acceptable = true
-    heights = fill(probable_next_conditions.center_of_mass, (probable_next_conditions.number_contact_points, ));
-
-    for ii = 1:probable_next_conditions.number_contact_points
-        θ = theta_from_cylindrical(Δr*(ii-1), probable_next_conditions.deformation_amplitudes)
-        heights[ii] = heights[ii] +  cos(θ) * (sum(amplitudes .* (collectPl(cos(θ), lmax = order).parent)) + 1);
-        if abs(heights[ii]) > spatial_tol
-            is_it_acceptable = false;
-            break;
-        end
-    end
-    if is_it_acceptable == false
-        # Tentative one: Modify the discrete amplitudes, find out the new amplitudes and the consequent pressure distribution.
-        θ = theta_from_cylindrical(Δr * probable_next_conditions.number_contact_points, 
-                                        probable_next_conditions.deformation_amplitudes);
-        
-        int_endpoint = cos(θ);
-
-        intermediate_amplitudes = zeros(Float64, (harmonics_qtt, ));
-        for ii = 2:harmonics_qtt
-
-            # Integrating from -1 (pi) to cos(θ) (θ)
-            intermediate_amplitudes[ii] = PROBLEM_CONSTANTS["LEGENDRE_POLYNOMIALS"][ii+1](int_endpoint) - PROBLEM_CONSTANTS["LEGENDRE_POLYNOMIALS"][ii+1](-1)
-            intermediate_amplitudes[ii] = sum([PROBLEM_CONSTANTS["poly_antiderivatives"][ii, jj] for jj = 4:10]) # TODO FIX THIS
-
-        end
-    end
-
-    return probable_next_conditions, is_it_acceptable
-
-
-
-
 end
