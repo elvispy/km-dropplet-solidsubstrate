@@ -50,9 +50,5 @@ end
 sinPoly = Polynomial([(mod(n, 2) == 0 ? 0.0 : ((-1.0)^(n÷2)/factorial(n))) for n = 0:15 ])
 end
 
-#using .problemStructsAndFunctions
-#using Polynomials
-
-#println(integrate_poly(Polynomial([0.0, 1.0]), 1)(-1.91287))
 
 
