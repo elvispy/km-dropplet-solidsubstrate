@@ -1,6 +1,7 @@
 using LegendrePolynomials
 
 include("./theta_from_cylindrical.jl");
+include("./problemConditionStruct.jl");
 # TODO: Properly document this function
 """
     getNextStep
@@ -296,7 +297,7 @@ function advance_conditions_dep(probable_next_conditions::ProblemConditions, cur
     new_CM_velocity = current_conditions.center_of_mass_velocity - 
         Δt / PROBLEM_CONSTANTS["froude_nb"] - 
         Δt * (pressure_amplitudes_tentative[1] + current_conditions.pressure_amplitudes[1]) / 2;
-;
+
     #new_center_of_mass = current_conditions.center_of_mass + 
     #    Δt * current_conditions.center_of_mass_velocity - 
     #    Δt^2 / PROBLEM_CONSTANTS["froude_nb"] - 
