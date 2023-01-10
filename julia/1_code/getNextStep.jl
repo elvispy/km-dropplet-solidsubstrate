@@ -118,7 +118,7 @@ function advance_conditions(probable_next_conditions::ProblemConditions, previou
     new_CM_velocity_times_dt +=  - Δt^2 * pressure_amplitudes_tentative[1] 
     # General case
     for ll = 2:(nb_harmonics-1)
-        new_CM_velocity_times_dt +=   4 * pi * Δt^2 *
+        new_CM_velocity_times_dt +=   3 * Δt^2 *
             amplitudes_tent[ll] / (2*ll+1) * (
                 Cl(ll) * pressure_amplitudes_tentative[ll-1] - 
                 Dl(ll) * pressure_amplitudes_tentative[ll+1]
