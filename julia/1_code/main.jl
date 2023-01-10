@@ -168,11 +168,11 @@ function solveMotion(; # <== Keyword Arguments!
         "LPdX" => LPdX
     )
 
-    probable_next_conditions = Array{ProblemConditions}(undef, 5);
+    probable_next_conditions = Vector{ProblemConditions}(undef, 5);
     current_conditions = ProblemConditions(harmonics_qtt, initial_amplitude, 
             amplitudes_velocities, initial_pressure_coefficients, 0.0, Δt, 
             initial_height, initial_velocity, 0);
-    previous_conditions = similar(current_conditions); # TODO: Define this array properly to implement BDF2.
+    previous_conditions = [current_conditions, current_conditions]; # TODO: Define this array properly to implement BDF2.
 
     if ("julia" in readdir());  cd("julia\\");  end
     if ("1_code" in readdir()); cd("1_code\\"); end
@@ -216,6 +216,8 @@ function solveMotion(; # <== Keyword Arguments!
     recorded_contact_points = zeros(Int64, (maximum_index,)); recorded_contact_points[1] = 0;
     recorded_velocity = zeros((maximum_index, )); recorded_velocity[1] = initial_velocity * velocity_unit;
     recorded_times = zeros((maximum_index, )); recorded_times[1] = initial_time * time_unit;
+    # TODO: implement the following version:
+    recorded_conditions = Vector{ProblemConditions}(undef, (maximum_index, )); recorded_conditions[1] = previous_conditions[end];
 
     # Coefficient of restitution
     mechanical_energy_in = NaN;
@@ -227,27 +229,29 @@ function solveMotion(; # <== Keyword Arguments!
         recalculate = false;
 
         # First, we try to solve with the same number of contact points
-        probable_next_conditions[3], errortan[3] = getNextStep(current_conditions, new_number_contact_points, Δt, spatial_step, 
+        probable_next_conditions[3], errortan[3] = getNextStep(previous_conditions, contact_points, Δt, spatial_step, 
                 spatial_tol, PROBLEM_CONSTANTS);
 
         if abs(errortan[3]) < 1e-8 # If almost no error, we accept the solution
-            
-            current_conditions  = probable_next_conditions[3];
+            current_conditions = probable_next_conditions[3];
+            previous_conditions = [previous_conditions[2:end]..., probable_next_conditions[3]];
         else # If there is some error, we try with diffferent contact points
             # Lets try with one more point
-            probable_next_conditions[4], errortan[4] = getNextStep();
+            probable_next_conditions[4], errortan[4] = getNextStep(previous_conditions, contact_points + 1, Δt, spatial_step, 
+            spatial_tol, PROBLEM_CONSTANTS);
             # Lets try with one point less
-            probable_next_conditions[2], errortan[2] = getNextStep();
-
+            probable_next_conditions[2], errortan[2] = getNextStep(previous_conditions, contact_points - 1, Δt, spatial_step, 
+            spatial_tol, PROBLEM_CONSTANTS);
               
             if (abs(errortan[3]) > abs(errortan[4]) ||  (abs(errortan[3]) > abs(errortan[2])))
                 if abs(errortan[4]) <= abs(errortan[2])
                     # Now lets check with one more point to be sure
-                    _, errortan[5] = getNextStep();
+                    _, errortan[5] = getNextStep(previous_conditions, contact_points + 2, Δt, spatial_step, 
+                    spatial_tol, PROBLEM_CONSTANTS);
 
                     if abs(errortan[4]) < abs(errortan[5])
                         # Accept new data 
-                        
+                        previous_conditions = [previous_conditions[2:end]..., probable_next_conditions[4]];
                         current_conditions  = probable_next_conditions[4];
                         contact_points      = contact_points + 1;
                     else
@@ -255,11 +259,12 @@ function solveMotion(; # <== Keyword Arguments!
                     end
                 else
                     # now lets check if errortan is good enough with one point less
-                    _, errortan[1] = getNextStep();
+                    _, errortan[1] = getNextStep(previous_conditions, contact_points - 2, Δt, spatial_step, 
+                    spatial_tol, PROBLEM_CONSTANTS);
 
                     if abs(errortan[2]) < abs(errortan[1])
                         # Accept new data
-                        
+                        previous_conditions = [previous_conditions[2:end]..., probable_next_conditions[2]];
                         current_conditions  = probable_next_conditions[2];
                         contact_points      = contact_points - 1;
                     else
@@ -272,7 +277,7 @@ function solveMotion(; # <== Keyword Arguments!
                     recalculate = true;
                 else
                     # Accept new data
-
+                    previous_conditions = [previous_conditions[2:end]..., probable_next_conditions[3]];
                     current_conditions  = probable_next_conditions[3];
                 end
             end
