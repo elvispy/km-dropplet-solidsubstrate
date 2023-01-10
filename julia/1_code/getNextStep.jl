@@ -13,7 +13,8 @@ function getNextStep(previous_conditions::Union{ProblemConditions, Vector{Proble
 
     if previous_conditions <: ProblemConditions; previous_conditions = [previous_conditions]; end
 
-    if new_number_contact_points < 0 || new_number_contact_points > 100 # TODO: calculate maximum number of contact points
+    # TODO: calculate maximum number of contact points
+    if new_number_contact_points < 0 || new_number_contact_points > 100 
         errortan = Inf;
         probable_next_conditions = ProblemConditions(NaN, 
             [NaN], [NaN], [NaN], NaN, NaN, NaN, NaN, NaN
@@ -24,7 +25,7 @@ function getNextStep(previous_conditions::Union{ProblemConditions, Vector{Proble
             previous_conditions[end].pressure_amplitudes, NaN, NaN, NaN, NaN, NaN);
         #pressure_amplitudes_tentative = current_conditions.pressure_amplitudes;
         iteration = 0;
-
+        previous_tentatives = [];
         while iteration < 100
             iteration = iteration + 1;
 
@@ -32,8 +33,9 @@ function getNextStep(previous_conditions::Union{ProblemConditions, Vector{Proble
             probable_next_conditions = advance_conditions(probable_next_conditions, 
                 previous_conditions, new_number_contact_points, Δt, PROBLEM_CONSTANTS);
             
-            probable_next_conditions, is_it_acceptable = update_tentative(probable_next_conditions, 
-                previous_conditions, Δr, Δt, spatial_tol, PROBLEM_CONSTANTS);
+            probable_next_conditions, is_it_acceptable, previous_tentatives = 
+                update_tentative_heuristic(probable_next_conditions, previous_conditions, 
+                    Δr, Δt, spatial_tol, PROBLEM_CONSTANTS; previous_tentatives = previous_tentatives);
             
             if is_it_acceptable == true
                 break;
@@ -242,14 +244,27 @@ function update_tentative_heuristic(probable_next_conditions::ProblemConditions,
         end
     end
     if is_it_acceptable == false
-        # Heuristic tentative: Aument of reduce the pressure at given points to fit flat area.
+        # Heuristic tentative: Increase of reduce the pressure at given points to fit flat area.
         θ = theta_from_cylindrical(Δr * (probable_next_conditions.number_contact_points - 1), 
             probable_next_conditions.deformation_amplitudes);
+            
+        y_velocity(θ::Float64)   = sin(θ) * cos(θ) * sum(probable_next_conditions.velocities_amplitudes .* 
+                (collectdnPl(cos(θ); lmax = order, n = 1).parent));
+        #amp(θ::Float64) = 1 + ζ(θ);
+        #r_positions = Δr * (0:(probable_next_conditions.new_number_contact_points-1));
+        #position_samples = [amp(theta_from_cylindrical(r)) for r in r_positions];
+        if length(previous_tentatives) == 0
+            # Modify pressure amplitudes so as to try to flatten the surface
 
-        
+        elseif length(previous_tentatives) == 1
+
+        else
+
+        end
+
     end
 
-    return probable_next_conditions, is_it_acceptable
+    return probable_next_conditions, is_it_acceptable, previous_tentatives
 end
 
 
