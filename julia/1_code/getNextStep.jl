@@ -187,10 +187,10 @@ function update_tentative(probable_next_conditions::ProblemConditions, previous_
             # Integrating from cos(θ) to 1 (known amplitude)
             intermediate_amplitudes[ii] = PROBLEM_CONSTANTS["LEGENDRE_POLYNOMIALS"][ii](1) - PROBLEM_CONSTANTS["LEGENDRE_POLYNOMIALS"][ii](int_endpoint)
             
-            new_tentative_amplitude_1 = probable_next_conditions.deformation_amplitudes #.* # TODO CHANGE THIS 
-                #= [PROBLEM_CONSTANTS["poly_antiderivatives"][ii, jj](1) 
-                    - PROBLEM_CONSTANTS["poly_antiderivatives"][ii, jj](int_endpoint) # ∫P_ii × P_jj dx  
-                        for jj = 2:harmonics_qtt] =#
+            new_tentative_amplitude_1 = probable_next_conditions.deformation_amplitudes .* # TODO CHANGE THIS 
+                 [(PROBLEM_CONSTANTS["poly_antiderivatives"][ii, jj](1) 
+                    - PROBLEM_CONSTANTS["poly_antiderivatives"][ii, jj](int_endpoint)) # ∫P_ii × P_jj dx  
+                        for jj = 2:harmonics_qtt] 
             intermediate_amplitudes[ii] += sum(new_tentative_amplitude_1) 
 
             # Integrating from -1 to cos(θ) (flat surface)
