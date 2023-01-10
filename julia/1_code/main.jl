@@ -211,14 +211,20 @@ function solveMotion(; # <== Keyword Arguments!
     ## Preparing post-processing
 
     # Preallocate variables that will be exported (All of them have units!)
-    recorded_height = zeros((maximum_index, )); recorded_height[1] = initial_height * length_unit;
-    recorded_pressure = zeros(maximum_index, nb_pressure_samples);
-    recorded_contact_points = zeros(Int64, (maximum_index,)); recorded_contact_points[1] = 0;
-    recorded_velocity = zeros((maximum_index, )); recorded_velocity[1] = initial_velocity * velocity_unit;
-    recorded_times = zeros((maximum_index, )); recorded_times[1] = initial_time * time_unit;
-    # TODO: implement the following version:
-    recorded_conditions = Vector{ProblemConditions}(undef, (maximum_index, )); recorded_conditions[1] = previous_conditions[end];
-
+    recorded_conditions = Vector{ProblemConditions}(undef, (maximum_index, )); 
+    give_dimensions(X::ProblemConditions) = ProblemConditions(
+        X.nb_harmonics,
+        X.deformation_amplitudes * length_unit,
+        X.velocities_amplitudes * velocity_unit,
+        X.pressure_amplitudes * (mass_unit * length_unit / (time_unit^2 * length_unit^2)),
+        X.current_time * time_unit,
+        X.dt * time_unit,
+        X.center_of_mass * length_unit,
+        X.center_of_mass_velocity * velocity_unit,
+        X.number_contact_points
+    );
+    recorded_conditions[1] = give_dimensions(previous_conditions[end]);
+    
     # Coefficient of restitution
     mechanical_energy_in = NaN;
     mechanical_energy_out = NaN; # TODO: Lab COef of restitution?
@@ -301,6 +307,8 @@ function solveMotion(; # <== Keyword Arguments!
             #  TODO: Update Indexes if necessary
 
             # TODO: # Stored data
+            recorded_conditions[current_index] = give_dimensions(previous_conditions[end]);
+            current_index = current_index + 1; # Point to the next space in memory 
 
             # If we are in a multiple of max_dt, reset indexes
             if jjj == 2^iii
@@ -320,9 +328,9 @@ function solveMotion(; # <== Keyword Arguments!
 
         end
 
-
     end # end main while loop
 
+    # TODO: Post processing
 
 end # end main function declaration
 
