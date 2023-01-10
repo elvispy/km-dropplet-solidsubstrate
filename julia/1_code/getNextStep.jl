@@ -179,7 +179,7 @@ function update_tentative(probable_next_conditions::ProblemConditions, previous_
             probable_next_conditions.deformation_amplitudes);
 
         int_endpoint = cos(θ);
-         
+        
         #d = 1 + sum([probable_next_conditions.deformation_amplitudes[ii] * (mod(ii, 2) == 0 ? 1 : -1)
              #   for ii = 1:nb_harmonics]);
         intermediate_amplitudes = zeros(Float64, (harmonics_qtt, ));
