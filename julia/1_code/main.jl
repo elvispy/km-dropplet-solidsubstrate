@@ -120,11 +120,7 @@ function solveMotion(; # <== Keyword Arguments!
     LPdX = Vector{Function}(undef, harmonics_qtt);
     polynomials_antiderivatives = Matrix{Function}(undef, harmonics_qtt, harmonics_qtt);
 
-    # This function calculates the primitive of P/x:  (P::Polynomial) -> ∫P(x) * x^(-1) dx
-    function integrate_poly(p::Polynomial{Float64, :x})::Function
-        y = integrate(Polynomial([p.coeffs[ii] for ii = 2:degree(p)]));
-        return (t) -> y(t) + p.coeffs[1] * log(t)
-    end
+    
 
     @variables x
     for ii = 1:harmonics_qtt
@@ -135,13 +131,6 @@ function solveMotion(; # <== Keyword Arguments!
         # This array has the integral of P_{ii-1}/x
         LPdX[ii] = integrate_poly(LEGENDRE_POLYNOMIALS[ii]);
     end
-
-    # https://www.wolframalpha.com/input?i=int_1%5E2+1%2F8+%2815+x+-+70+x%5E3+%2B+63+x%5E5%29%2Fx+dx
-    @assert isapprox(LPdX[5](2) - LPdX[5](1), 1817/60; rtol=1e-5) "∫ P_5(x)/x dx not properly integrated!"
-    
-    # https://www.wolframalpha.com/input?i=int_%7B0.5%7D%5E%7B1.2%7D+1%2F8+%283+-+30+x%5E2+%2B+35+x%5E4%29%2Fx+dx
-    @assert isapprox(LPdX[4](1.2) - LPdX[4](0.5), 0.296691; atol=1e-5) "∫ P_4(x)/x dx not properly integrated!"
-    
 
     f(n::Integer) = sqrt(n .* (n+2) .* (n-1) ./ weber_nb);
 
@@ -211,14 +200,20 @@ function solveMotion(; # <== Keyword Arguments!
     ## Preparing post-processing
 
     # Preallocate variables that will be exported (All of them have units!)
-    recorded_height = zeros((maximum_index, )); recorded_height[1] = initial_height * length_unit;
-    recorded_pressure = zeros(maximum_index, nb_pressure_samples);
-    recorded_contact_points = zeros(Int64, (maximum_index,)); recorded_contact_points[1] = 0;
-    recorded_velocity = zeros((maximum_index, )); recorded_velocity[1] = initial_velocity * velocity_unit;
-    recorded_times = zeros((maximum_index, )); recorded_times[1] = initial_time * time_unit;
-    # TODO: implement the following version:
-    recorded_conditions = Vector{ProblemConditions}(undef, (maximum_index, )); recorded_conditions[1] = previous_conditions[end];
-
+    recorded_conditions = Vector{ProblemConditions}(undef, (maximum_index, )); 
+    give_dimensions(X::ProblemConditions) = ProblemConditions(
+        X.nb_harmonics,
+        X.deformation_amplitudes * length_unit,
+        X.velocities_amplitudes * velocity_unit,
+        X.pressure_amplitudes * (mass_unit * length_unit / (time_unit^2 * length_unit^2)),
+        X.current_time * time_unit,
+        X.dt * time_unit,
+        X.center_of_mass * length_unit,
+        X.center_of_mass_velocity * velocity_unit,
+        X.number_contact_points
+    );
+    recorded_conditions[1] = give_dimensions(previous_conditions[end]);
+    
     # Coefficient of restitution
     mechanical_energy_in = NaN;
     mechanical_energy_out = NaN; # TODO: Lab COef of restitution?
@@ -301,6 +296,8 @@ function solveMotion(; # <== Keyword Arguments!
             #  TODO: Update Indexes if necessary
 
             # TODO: # Stored data
+            recorded_conditions[current_index] = give_dimensions(previous_conditions[end]);
+            current_index = current_index + 1; # Point to the next space in memory 
 
             # If we are in a multiple of max_dt, reset indexes
             if jjj == 2^iii
@@ -320,9 +317,9 @@ function solveMotion(; # <== Keyword Arguments!
 
         end
 
-
     end # end main while loop
 
+    # TODO: Post processing
 
 end # end main function declaration
 

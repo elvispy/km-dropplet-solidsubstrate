@@ -3,7 +3,7 @@ using ReTest
 module PSF_tester
     using ReTest, ClassicalOrthogonalPolynomials, LinearAlgebra, Polynomials
     include("./problemStructsAndFunctions.jl")
-    using .problemStructsAndFunctions: LP, sinPoly;
+    using .problemStructsAndFunctions: LP, sinPoly, integrate_poly;
     
     s = -1:0.02:1; NMAX = 150;
     X = LP(NMAX);
@@ -33,7 +33,18 @@ module PSF_tester
         # Legendre Polynomials are Orthogonal  
         Y4 = integrate(X[49] * X[119]);
         @test Y4(-1) ≈ Y4(1) rtol=1e-5
+    end # End testset
+    a = 1;
+    @testset "Testing ∫P(x)/x^m dx" begin
 
+        # https://www.wolframalpha.com/input?i=int_1%5E2+1%2F8+%2815+x+-+70+x%5E3+%2B+63+x%5E5%29%2Fx+dx
+        @test integrate_poly(X[5], 1)(2) - integrate_poly(X[5], 1)(1) ≈ 1817/60 rtol=1e-5 #"∫ P_5(x)/x dx not properly integrated!"
+        
+        # https://www.wolframalpha.com/input?i=int_%7B0.5%7D%5E%7B1.2%7D+1%2F8+%283+-+30+x%5E2+%2B+35+x%5E4%29%2Fx+dx
+        @test integrate_poly(X[4], 1)(1.2) - integrate_poly(X[4], 1)(0.5) ≈ 0.296691 atol=1e-5 #"∫ P_4(x)/x dx not properly integrated!"
+        
+        # https://www.wolframalpha.com/input?i=int_%7B0.2%7D%5E%7B0.9%7D+1%2F2+%28-3+x+%2B+5+x%5E3%29%2Fx%5E2+dx
+        @test integrate_poly(X[3], 2)(0.9) - integrate_poly(X[3], 2)(0.2) ≈ -1.29362 atol=1e-5 #"∫ P_4(x)/x dx not properly integrated!"
     end
 end
 
