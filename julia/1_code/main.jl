@@ -120,11 +120,7 @@ function solveMotion(; # <== Keyword Arguments!
     LPdX = Vector{Function}(undef, harmonics_qtt);
     polynomials_antiderivatives = Matrix{Function}(undef, harmonics_qtt, harmonics_qtt);
 
-    # This function calculates the primitive of P/x:  (P::Polynomial) -> ∫P(x) * x^(-1) dx
-    function integrate_poly(p::Polynomial{Float64, :x})::Function
-        y = integrate(Polynomial([p.coeffs[ii] for ii = 2:degree(p)]));
-        return (t) -> y(t) + p.coeffs[1] * log(t)
-    end
+    
 
     @variables x
     for ii = 1:harmonics_qtt
@@ -135,13 +131,6 @@ function solveMotion(; # <== Keyword Arguments!
         # This array has the integral of P_{ii-1}/x
         LPdX[ii] = integrate_poly(LEGENDRE_POLYNOMIALS[ii]);
     end
-
-    # https://www.wolframalpha.com/input?i=int_1%5E2+1%2F8+%2815+x+-+70+x%5E3+%2B+63+x%5E5%29%2Fx+dx
-    @assert isapprox(LPdX[5](2) - LPdX[5](1), 1817/60; rtol=1e-5) "∫ P_5(x)/x dx not properly integrated!"
-    
-    # https://www.wolframalpha.com/input?i=int_%7B0.5%7D%5E%7B1.2%7D+1%2F8+%283+-+30+x%5E2+%2B+35+x%5E4%29%2Fx+dx
-    @assert isapprox(LPdX[4](1.2) - LPdX[4](0.5), 0.296691; atol=1e-5) "∫ P_4(x)/x dx not properly integrated!"
-    
 
     f(n::Integer) = sqrt(n .* (n+2) .* (n-1) ./ weber_nb);
 

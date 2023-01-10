@@ -99,8 +99,7 @@ function advance_conditions(probable_next_conditions::ProblemConditions, previou
             rhs_vector = rhs_vector + coefs[jj] * diagexp(dt(jj)) * Y[jj, ii, :]
         end
         Y[end, ii, :] = (Δt * PB[1, ii, :]  - rhs_vector)/ coefs[end] 
-        
-        
+         
         Y[end, ii, :] = PROBLEM_CONSTANTS["ODE_matrices"][:, :, ii] * Y[end, ii, :];        
     end
 
@@ -118,7 +117,7 @@ function advance_conditions(probable_next_conditions::ProblemConditions, previou
     new_CM_velocity_times_dt +=  - Δt^2 * pressure_amplitudes_tentative[1] 
     # General case
     for ll = 2:(nb_harmonics-1)
-        new_CM_velocity_times_dt +=   3 * Δt^2 *
+        new_CM_velocity_times_dt += 3 * Δt^2 *
             amplitudes_tent[ll] / (2*ll+1) * (
                 Cl(ll) * pressure_amplitudes_tentative[ll-1] - 
                 Dl(ll) * pressure_amplitudes_tentative[ll+1]
@@ -126,7 +125,7 @@ function advance_conditions(probable_next_conditions::ProblemConditions, previou
     end
 
     # Special case: Last harmonic
-    new_CM_velocity_times_dt +=  Δt^2 * 4 * pi * 
+    new_CM_velocity_times_dt += 3 * Δt^2 *  
         amplitudes_tent[nb_harmonics] / (2 * nb_harmonics + 1) * (
             Cl(nb_harmonics) * pressure_amplitudes_tentative[nb_harmonics - 1]
         ) 
