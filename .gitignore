@@ -12,7 +12,6 @@ deps/build.log
 deps/downloads/
 deps/usr/
 deps/src/
-*.json
 *.sh
 .npmignore
 
