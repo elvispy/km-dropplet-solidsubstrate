@@ -1,5 +1,6 @@
 using LegendrePolynomials
 include("./zeta.jl");
+include("./problemConditionStruct.jl");
 
 # LegendrePolys(x::Float64; lmax::Integer) = collectPl(x, lmax = lmax).parent
 """ 
@@ -15,6 +16,7 @@ pi/2
 
  """
 function theta_from_cylindrical(r, amplitudes; guess = pi-0.1)::Float64
+    if typeof(amplitudes) <: ProblemConditions; amplitudes = amplitudes.deformation_amplitudes; end
     
     order = length(amplitudes);
     ζ = zeta(amplitudes; order = order);

@@ -3,10 +3,14 @@ using LegendrePolynomials # TODO import only what is necessary
 include("./theta_from_cylindrical.jl");
 include("./r_from_spherical.jl");
 include("./problemConditionStruct.jl");
+include("./zeta.jl");
+include("./maximum_contact_radius.jl");
 # TODO: Properly document this function
+
 """
     getNextStep
 Tries to advance one step (Δt) in the solution of the dropplet / solid substrate interaction
+Uses implicit euler or BDF-2, depending on the number amoount of data available
 """
 function getNextStep(previous_conditions::Union{ProblemConditions, Vector{ProblemConditions}}, 
     new_number_contact_points::Int64, Δt::Float64, Δr::Float64, spatial_tol::Float64, PROBLEM_CONSTANTS
@@ -14,9 +18,8 @@ function getNextStep(previous_conditions::Union{ProblemConditions, Vector{Proble
 
     if previous_conditions <: ProblemConditions; previous_conditions = [previous_conditions]; end
 
-    # TODO: calculate maximum number of contact points
-    if new_number_contact_points < 0 || new_number_contact_points > 100 
-        errortan = Inf;
+    errortan = Inf;
+    if new_number_contact_points < 0 
         probable_next_conditions = ProblemConditions(NaN, 
             [NaN], [NaN], [NaN], NaN, NaN, NaN, NaN, NaN
         )
@@ -24,7 +27,7 @@ function getNextStep(previous_conditions::Union{ProblemConditions, Vector{Proble
         # Try with same pressure distribution
         probable_next_conditions = ProblemConditions(NaN, [NaN], [NaN], 
             previous_conditions[end].pressure_amplitudes, NaN, NaN, NaN, NaN, NaN);
-        #pressure_amplitudes_tentative = current_conditions.pressure_amplitudes;
+
         iteration = 0;
         previous_tentatives = [];
         while iteration < 100
@@ -44,7 +47,16 @@ function getNextStep(previous_conditions::Union{ProblemConditions, Vector{Proble
             if iteration == 100; println("Hey!") end
         end
 
-        errortan = NaN; # TODO: Update this
+        # Check if solution makes sense
+        r_max = maximum_contact_radius(probable_next_conditions);
+        if r_max < Δr * (probable_next_conditions.number_contact_points - 1/2)
+            return getNextStep(probable_next_conditions, -1, NaN, NaN, NaN, nothing);
+        end
+
+        # Calculate errortan
+        # ζ = zeta(probable_next_conditions.deformation_amplitudes; order = probable_next_conditions.nb_harmonics);
+        rmax = Δr * (probable_next_conditions.number_contact_points - 1/2)
+        errortan = calculate_exit_angle(probable_next_conditions, theta_from_cylindrical(rmax, probable_next_conditions))
 
     end # End main if
 
@@ -166,11 +178,13 @@ function update_tentative(probable_next_conditions::ProblemConditions, previous_
     is_it_acceptable = true
     # First, lets check if the given probable next condition is acceptable or not.
     heights = fill(probable_next_conditions.center_of_mass, (probable_next_conditions.number_contact_points, ));
+
+    ζ = zeta(probable_next_conditions)
    
     for ii = 1:probable_next_conditions.number_contact_points
         # Angle of last contact point
         θ = theta_from_cylindrical(Δr*(ii-1), probable_next_conditions.deformation_amplitudes)
-        heights[ii] += cos(θ) * (1 + sum(amplitudes .* (collectPl(cos(θ), lmax = order.parent)[2:end]))); # We need .parent as collectPl returns an offset zero-indexed offsetarray!
+        heights[ii] += cos(θ) * ζ(θ); 
         if abs(heights[ii]) > spatial_tol
             is_it_acceptable = false;
             break;
@@ -235,13 +249,14 @@ function update_tentative_heuristic(probable_next_conditions::ProblemConditions,
     # First, lets check if the given probable next condition is acceptable or not.
     heights = fill(probable_next_conditions.center_of_mass, (probable_next_conditions.number_contact_points, ));
     pressure_samples = zeros(Float64, (harmonics_qtt, ));
-        
+    pressure_amps = zeta(probable_next_conditions.pressure_amplitudes);
+    ζ = zeta(probable_next_conditions)
     rmax = Δr * (probable_next_conditions.number_contact_points - 1/2);
     for ii = 1:harmonics_qtt
         # Angle of last contact point
         θ = theta_from_cylindrical(rmax*(ii-1)/(harmonics_qtt-1), probable_next_conditions.deformation_amplitudes)
-        heights[ii] += cos(θ) * (1 + sum(amplitudes .* (collectPl(cos(θ), lmax = order).parent)[2:end])); # We need .parent as collectPl returns an offset zero-indexed offsetarray!
-        pressure_samples[ii] = sum(probable_next_conditions.pressure_amplitudes .* (collectPl(cos(θ), lmax = order).parent)[2:end]) - sum(probable_next_conditions.pressure_amplitudes);
+        heights[ii] += cos(θ) * (1 + ζ(θ)); # We need .parent as collectPl returns an offset zero-indexed offsetarray!
+        pressure_samples[ii] = pressure_amps(θ) - sum(probable_next_conditions.pressure_amplitudes);
         if abs(heights[ii]) > spatial_tol
             is_it_acceptable = false;
         end
@@ -261,7 +276,6 @@ function update_tentative_heuristic(probable_next_conditions::ProblemConditions,
             
         y_velocity(θ::Float64)   = cos(θ)^2 * sum(probable_next_conditions.velocities_amplitudes .* 
                 (collectdnPl(cos(θ); lmax = order, n = 1).parent));
-        #amp(θ::Float64) = 1 + ζ(θ);
         #r_positions = Δr * (0:(probable_next_conditions.new_number_contact_points-1));
         pressure_perturbation = zeros(Float64, (harmonics_qtt, ));
 
@@ -406,4 +420,20 @@ function advance_conditions_dep(probable_next_conditions::ProblemConditions, cur
         new_CM_velocity,
         new_nb_contact_points
     )
+end
+
+"""
+    calculate_exit_angle(::Vector{Float64}, ::Float64)
+Calculates the exit angle at the contact angle θ
+"""
+function calculate_exit_angle(amplitudes, angle)
+    if typeof(amplitudes) <: ProblemConditions; amplitudes = amplitudes.deformation_amplitudes; end
+    d = length(amplitudes);
+    ζ = zeta(amplitudes);
+    der(θ::Float64) = sum(amplitudes .* collectdnPl(cos(θ), lmax = d)[1:end]);
+
+    dzdr(θ::Float64) = (-sin(θ) * (1 + ζ(θ)) - cos(θ) * sin(θ) * der(θ)) /
+        cos(θ) * (1 + ζ(θ)) - sin(θ)^2 * der(θ);
+        
+    return dzdr(angle);
 end

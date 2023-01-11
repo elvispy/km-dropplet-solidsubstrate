@@ -1,5 +1,6 @@
 using LegendrePolynomials: collectPl, collectdnPl
 include("./r_from_spherical.jl"); include("./zeta.jl");
+include("./problemConditionStruct.jl");
 
 """
     theta_max_radius(::Vector{Float64})::Float64
@@ -10,7 +11,8 @@ and
     dr/dθ = cos(θ) (1 + ζ(θ)) -sin(θ)^2 * ∑Al P'l(cos(θ))
 
 """
-function maximum_contact_radius(amplitudes::Vector{Float64}; guess = pi/2 + pi/4)::Float64
+function maximum_contact_radius(amplitudes::Union{ProblemConditions, Vector{Float64}}; guess = pi/2 + pi/4)::Float64
+    if typeof(amplitudes) <: ProblemConditions; amplitudes = amplitudes.deformation_amplitudes; end
     order = length(amplitudes);
     ζ = zeta(amplitudes); # sum(amplitudes .* (collectPl(cos(θ), lmax = order))[2:end])
     drdθ(θ::Float64)::Float64 = cos(θ) * (1 + ζ(θ)) - 
