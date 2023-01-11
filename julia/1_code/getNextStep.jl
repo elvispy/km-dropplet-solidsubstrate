@@ -1,6 +1,7 @@
-using LegendrePolynomials
+using LegendrePolynomials # TODO import only what is necessary
 
 include("./theta_from_cylindrical.jl");
+include("./r_from_spherical.jl");
 include("./problemConditionStruct.jl");
 # TODO: Properly document this function
 """
@@ -169,7 +170,7 @@ function update_tentative(probable_next_conditions::ProblemConditions, previous_
     for ii = 1:probable_next_conditions.number_contact_points
         # Angle of last contact point
         θ = theta_from_cylindrical(Δr*(ii-1), probable_next_conditions.deformation_amplitudes)
-        heights[ii] += cos(θ) * (1 + sum(amplitudes .* (collectPl(cos(θ), lmax = order).parent))); # We need .parent as collectPl returns an offset zero-indexed offsetarray!
+        heights[ii] += cos(θ) * (1 + sum(amplitudes .* (collectPl(cos(θ), lmax = order.parent)[2:end])); # We need .parent as collectPl returns an offset zero-indexed offsetarray!
         if abs(heights[ii]) > spatial_tol
             is_it_acceptable = false;
             break;
@@ -226,7 +227,7 @@ Returns a probable next solution and a flag boolean to decide whether the new so
 Using an heuristic
 """
 function update_tentative_heuristic(probable_next_conditions::ProblemConditions, previous_conditions::Vector{ProblemConditions}, 
-    Δr::Float64, Δt::Float64, spatial_tol::Float64, PROBLEM_CONSTANTS::Dict; previous_tentatives::Vector{Vector{Float64}}
+    Δr::Float64, Δt::Float64, spatial_tol::Float64, PROBLEM_CONSTANTS::Dict; previous_tentatives::Vector{Dict{String, Vector{Float64}}}
     )::Tuple{ProblemConditions, Bool}
 
     harmonics_qtt = probable_next_conditions.nb_harmonics;
@@ -239,17 +240,24 @@ function update_tentative_heuristic(probable_next_conditions::ProblemConditions,
     for ii = 1:harmonics_qtt
         # Angle of last contact point
         θ = theta_from_cylindrical(rmax*(ii-1)/(harmonics_qtt-1), probable_next_conditions.deformation_amplitudes)
-        heights[ii] += cos(θ) * (1 + sum(amplitudes .* (collectPl(cos(θ), lmax = order).parent))); # We need .parent as collectPl returns an offset zero-indexed offsetarray!
-        pressure_samples[ii] = sum(probable_next_conditions.pressure_amplitudes .* (collectPl(cos(θ), lmax = order).parent)) - sum(probable_next_conditions.pressure_amplitudes);
+        heights[ii] += cos(θ) * (1 + sum(amplitudes .* (collectPl(cos(θ), lmax = order).parent)[2:end])); # We need .parent as collectPl returns an offset zero-indexed offsetarray!
+        pressure_samples[ii] = sum(probable_next_conditions.pressure_amplitudes .* (collectPl(cos(θ), lmax = order).parent)[2:end]) - sum(probable_next_conditions.pressure_amplitudes);
         if abs(heights[ii]) > spatial_tol
             is_it_acceptable = false;
         end
     end
+    # you cant have negative pressures
     @assert min(pressure_samples) ≥ 0 "Negative pressures!";
-
+    previous_tentatives = [previous_tentatives; 
+        Dict(
+            "heights" => heights,
+            "pressure_samples" => pressure_samples
+        )
+    ];
+        
     if is_it_acceptable == false
         # Heuristic tentative: Increase of reduce the pressure at given points to fit flat area.
-        θ = theta_from_cylindrical(rmax, probable_next_conditions.deformation_amplitudes);
+        θ_max= theta_from_cylindrical(rmax, probable_next_conditions.deformation_amplitudes);
             
         y_velocity(θ::Float64)   = cos(θ)^2 * sum(probable_next_conditions.velocities_amplitudes .* 
                 (collectdnPl(cos(θ); lmax = order, n = 1).parent));
@@ -257,28 +265,57 @@ function update_tentative_heuristic(probable_next_conditions::ProblemConditions,
         #r_positions = Δr * (0:(probable_next_conditions.new_number_contact_points-1));
         pressure_perturbation = zeros(Float64, (harmonics_qtt, ));
 
-        if length(previous_tentatives) == 0
+        if length(previous_tentatives) < 2
             # Modify pressure amplitudes so as to try to flatten the surface
-            pressure_perturbation = pressure_samples .* [h > 0 ? 1.1 : 0.9 for h in heights] .+ [(heights[ii] > 0 && isapprox(pressure_samples[ii], 0) ? 0.1 : 0 ) for ii = 1:harmonics_qtt]
+            pressure_perturbation = previous_tentatives[end]["pressure_samples"] .* [h > 0 ? 0.1 : -0.1 for h in previous_tentatives[end]["heights"]] .+ 
+                [(heights[ii] > 0 && isapprox(previous_tentatives[end]["heights"][ii], 0) ? 0.1 : 0 ) for ii = 1:harmonics_qtt]
             #θ = theta_from_cylindrical(rmax*(ii-1)/(harmonics_qtt-1), probable_next_conditions.deformation_amplitudes)
-
-                #how_much_moved = heights[ii] - (previous_conditions[end].center_of_mass + cos(θ) * 
-                #    (1 + sum(previous_conditions[end].deformation_amplitudes .* (collectPl(cos(θ), lmax = order).parent))))
-                
-                # Deciding how to change pressure distribution
-                
-        elseif length(previous_tentatives) == 1
-            
         else
-
+            # First tentative: assume linearity between the last two tentatives
+            interpolator(d1::Dict, d2::Dict, idx::Int)::Float64 = (d2["heights"][idx] * d1["pressure_samples"][idx] - d1["heights"][idx] * d2["pressure_samples"][idx]) / 
+                (d2["heights"][idx] - d1["heights"][idx]);
+            d1 = previous_tentatives[end];
+            d2 = previous_tentatives[end - 1];
+            pressure_perturbation = interpolator.(d1, d2, 1:harmonics_qtt) .- previous_tentatives[end]["pressure_samples"];
         end
-        previous_tentatives = [previous_tentatives; (heights, pressure_samples)];
 
+        # Compute new pressure coefficients:
+        itp = interpolate(pressure_perturbation);
+        f(x::Float64)::Flaot64 = itp(1 + (harmonics_qtt-1)/rmax * x);
+        ps(θ::Float64) = (θ < θ_max) ? 0 : f(r_from_spherical(θ, probable_next_conditions.deformation_amplitudes));
+
+        projected_pressure_amplitudes = project_amplitudes(ps, harmonics_qtt; endpoints = [θ_max, π])
+
+        @assert  all((i) -> i > 0, probable_next_conditions.pressure_amplitudes .+ project_amplitudes) "Need to fix this"
+
+        probable_next_conditions = ProblemConditions(
+            probable_next_conditions.nb_harmonics,
+            probable_next_conditions.deformation_amplitudes,
+            probable_next_conditions.velocities_amplitudes,
+            probable_next_conditions.pressure_amplitudes .+ projected_pressure_amplitudes,
+            probable_next_conditions.current_time,
+            probable_next_conditions.dt,
+            probable_next_conditions.center_of_mass,
+            probable_next_conditions.center_of_mass_velocity,
+            probable_next_conditions.number_contact_points
+        )
     end
-
+            
     return probable_next_conditions, is_it_acceptable, previous_tentatives
 end
 
+"""
+    project_amplitudes(::Function; ::Vector{Float64, 2})
+This function evaluates the integral ∫Pl(cos(θ)) * f(θ) * sin(θ) dθ given the endpoints
+"""
+function project_amplitudes(f::Function, harmonics_qtt::Int; endpoints)::Vector{Float64}
+    projected_amplitudes = zeros(Float64, (harmonics_qtt, ));
+    for ii = 1:harmonics_qtt
+        projected_amplitudes[ii], _ = quadgk((θ) -> Pl(cos(θ), ii) * f(θ) * sin(θ), endpoints[1], endpoints[2]);
+    end
+
+    return project_amplitudes
+end
 
 function advance_conditions_dep(probable_next_conditions::ProblemConditions, current_conditions::ProblemConditions,  
     new_nb_contact_points::Int64, Δt::Float64, PROBLEM_CONSTANTS
