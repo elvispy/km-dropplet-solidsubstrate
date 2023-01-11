@@ -170,7 +170,7 @@ function update_tentative(probable_next_conditions::ProblemConditions, previous_
     for ii = 1:probable_next_conditions.number_contact_points
         # Angle of last contact point
         θ = theta_from_cylindrical(Δr*(ii-1), probable_next_conditions.deformation_amplitudes)
-        heights[ii] += cos(θ) * (1 + sum(amplitudes .* (collectPl(cos(θ), lmax = order.parent)[2:end])); # We need .parent as collectPl returns an offset zero-indexed offsetarray!
+        heights[ii] += cos(θ) * (1 + sum(amplitudes .* (collectPl(cos(θ), lmax = order.parent)[2:end]))); # We need .parent as collectPl returns an offset zero-indexed offsetarray!
         if abs(heights[ii]) > spatial_tol
             is_it_acceptable = false;
             break;
