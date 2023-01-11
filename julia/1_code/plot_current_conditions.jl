@@ -1,5 +1,6 @@
 
 include("problemConditionStruct.jl");
+include("./zeta.jl");
 using LegendrePolynomials: collectPl
 using Plots;
 """
@@ -17,7 +18,8 @@ function plot_current_conditions(data::Union{ProblemConditions, Vector{Float64}}
     end
     if isnan(center_of_mass); center_of_mass = 1+sum([(-1)^ii * data[ii] for ii in eachindex(data)]); end
     d = length(data);
-    ζ(θ::Float64) = sum(data .* (collectPl(cos(θ), lmax = d).parent)[2:end]);
+    ζ = zeta(data; order = d);
+    # ζ(θ::Float64) = sum(data .* (collectPl(cos(θ), lmax = d).parent)[2:end]);
     x(θ::Float64) = sin(θ) * (1 + ζ(θ));
     y(θ::Float64) = center_of_mass + cos(θ) * (1 + ζ(θ));
 
