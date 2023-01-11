@@ -3,11 +3,13 @@ using ReTest
 module tester
     using ReTest
     include("./maximum_contact_radius.jl")
+    include("./zeta.jl");
 
     function manual_max_radius(amplitudes; tol = 1e-5)
         # using bissection method
         order = length(amplitudes);
-        ζ(θ::Float64)::Float64 = sum(amplitudes .* (collectPl(cos(θ), lmax = order))[2:end])
+        # ζ(θ::Float64)::Float64 = sum(amplitudes .* (collectPl(cos(θ), lmax = order))[2:end])
+        ζ = zeta(amplitudes; order = order);
         drdθ(θ::Float64)::Float64 = cos(θ) * (1 + ζ(θ)) - 
             sin(θ)^2 * sum(amplitudes .* (collectdnPl(cos(θ), lmax = order, n = 1))[2:end]);
         
@@ -37,7 +39,7 @@ module tester
     end
     
     @testset "No amplitudes" begin
-        @test maximum_contact_radius([0.0, 0.0]) ≈ 1 rtol=1e-4
+        @test maximum_contact_radius([0.0, 0.0]) ≈ 1 rtol=1e-5
         # test_amplitudes(range(0.0, 0.99, length=15), [0, 0]);
     end
     """

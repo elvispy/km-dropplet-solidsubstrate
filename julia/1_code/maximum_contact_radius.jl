@@ -1,5 +1,5 @@
 using LegendrePolynomials: collectPl, collectdnPl
-include("./r_from_spherical.jl");
+include("./r_from_spherical.jl"); include("./zeta.jl");
 
 """
     theta_max_radius(::Vector{Float64})::Float64
@@ -12,13 +12,13 @@ and
 """
 function maximum_contact_radius(amplitudes::Vector{Float64}; guess = pi/2 + pi/4)::Float64
     order = length(amplitudes);
-    ζ(θ::Float64)::Float64 = sum(amplitudes .* (collectPl(cos(θ), lmax = order))[2:end])
+    ζ = zeta(amplitudes); # sum(amplitudes .* (collectPl(cos(θ), lmax = order))[2:end])
     drdθ(θ::Float64)::Float64 = cos(θ) * (1 + ζ(θ)) - 
-        sin(θ)^2 * sum(amplitudes .* (collectdnPl(cos(θ), lmax = order, n = 1))[2:end]);
+        sin(θ)^2 * sum(amplitudes .* (collectdnPl(cos(θ), lmax = order, n = 1))[1:end]);
 
     dr2dθ2(θ::Float64)::Float64 = - sin(θ) * (1 + ζ(θ)) - 2 * cos(θ) * sin(θ) * 
-        sum(amplitudes .* (collectdnPl(cos(θ), lmax = order, n = 1))[2:end]) + 
-        sin(θ)^3 * sum(amplitudes .* (collectdnPl(cos(θ), lmax = order, n = 2))[2:end])
+        sum(amplitudes .* (collectdnPl(cos(θ), lmax = order, n = 1))[1:end]) + 
+        sin(θ)^3 * sum(amplitudes .* (collectdnPl(cos(θ), lmax = order, n = 2))[1:end])
 
     θ = guess;
     tol_θ = 1e-7;
@@ -40,5 +40,3 @@ function maximum_contact_radius(amplitudes::Vector{Float64}; guess = pi/2 + pi/4
     return r_from_spherical(θ, amplitudes);
 
 end
-
-# println(maximum_contact_radius([0.0, 0.0]))

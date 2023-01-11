@@ -1,4 +1,5 @@
 using LegendrePolynomials
+include("./zeta.jl");
 
 # LegendrePolys(x::Float64; lmax::Integer) = collectPl(x, lmax = lmax).parent
 """ 
@@ -16,13 +17,14 @@ pi/2
 function theta_from_cylindrical(r, amplitudes; guess = pi-0.1)::Float64
     
     order = length(amplitudes);
-    ζ(θ::Float64)   = @. $sum(amplitudes * (collectPl(cos(θ), lmax = order).parent)[2:end]);
+    ζ = zeta(amplitudes; order = order);
+    # ζ(θ::Float64)   = @. $sum(amplitudes * (collectPl(cos(θ), lmax = order).parent)[2:end]);
     
     # Derivative of the function
-    f_prime(θ)      = @. cos(θ) * (1 + ζ(θ)) - sin(θ)^2 * $sum(amplitudes * (collectdnPl(cos(θ), lmax = order, n = 1).parent)[2:end]);
+    f_prime(θ)      = cos(θ) * (1 + ζ(θ)) - sin(θ)^2 * sum(amplitudes .* (collectdnPl(cos(θ), lmax = order, n = 1))[1:end]);
     
     # Function to be minimized
-    f_objective(θ)  = @. sin(θ) * (1 + ζ(θ)) - r;
+    f_objective(θ)  = sin(θ) * (1 + ζ(θ)) - r;
 
     θ = guess;
     tol_θ = 1e-7;
@@ -41,3 +43,6 @@ function theta_from_cylindrical(r, amplitudes; guess = pi-0.1)::Float64
 
     return θ
 end
+
+# amp = [0.0, 0.0, 0.1];
+# println(theta_from_cylindrical(0.7/5, amp));

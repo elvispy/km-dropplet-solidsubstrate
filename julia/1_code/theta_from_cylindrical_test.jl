@@ -3,10 +3,12 @@ using ReTest
 module tester
     using ReTest
     include("./theta_from_cylindrical.jl")
+    include("./zeta.jl");
 
     function manual_theta_from_cylindrical(r, amplitudes; tol = 1e-5)
         order = length(amplitudes);
-        ζ(θ::Float64) = @. $sum(amplitudes * (collectPl(cos(θ), lmax = order).parent)[2:end]);
+        ζ = zeta(amplitudes; order = order);
+        # ζ(θ::Float64) = @. $sum(amplitudes * (collectPl(cos(θ), lmax = order).parent)[2:end]);
         r_from_θ(θ)   = @. sin(θ) * (1 + ζ(θ)) - r;
         for theta = pi:(-tol):pi/2
             if abs(r_from_θ(theta)) < tol || r_from_θ(theta + tol) < 0 < r_from_θ(theta - tol) 
