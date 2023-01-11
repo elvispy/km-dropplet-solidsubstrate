@@ -1,6 +1,6 @@
 using LegendrePolynomials
 
-LegendrePolys(x::Float64; lmax::Integer) = collectPl(x, lmax = lmax).parent
+# LegendrePolys(x::Float64; lmax::Integer) = collectPl(x, lmax = lmax).parent
 """ 
     theta_from_cylindrical(r, amplitudes, guess=pi-0.1)::Float64
  Calculates the theta that corresponds to a radius by Newton-Raphson
@@ -15,11 +15,11 @@ pi/2
  """
 function theta_from_cylindrical(r, amplitudes; guess = pi-0.1)::Float64
     
-    order = length(amplitudes) - 1;
-    ζ(θ::Float64)   = @. $sum(amplitudes * (collectPl(cos(θ), lmax = order).parent));
+    order = length(amplitudes);
+    ζ(θ::Float64)   = @. $sum(amplitudes * (collectPl(cos(θ), lmax = order).parent)[2:end]);
     
     # Derivative of the function
-    f_prime(θ)      = @. cos(θ) * (1 + ζ(θ)) - sin(θ)^2 * $sum(amplitudes * (collectdnPl(cos(θ), lmax = order, n = 1).parent));
+    f_prime(θ)      = @. cos(θ) * (1 + ζ(θ)) - sin(θ)^2 * $sum(amplitudes * (collectdnPl(cos(θ), lmax = order, n = 1).parent)[2:end]);
     
     # Function to be minimized
     f_objective(θ)  = @. sin(θ) * (1 + ζ(θ)) - r;
@@ -41,5 +41,3 @@ function theta_from_cylindrical(r, amplitudes; guess = pi-0.1)::Float64
 
     return θ
 end
-
-#println(theta_from_cylindrical(0.0, [0.0, 0.0, 0.1, 0.2, 0.3]))
