@@ -233,34 +233,46 @@ function update_tentative_heuristic(probable_next_conditions::ProblemConditions,
     is_it_acceptable = true
     # First, lets check if the given probable next condition is acceptable or not.
     heights = fill(probable_next_conditions.center_of_mass, (probable_next_conditions.number_contact_points, ));
-   
-    for ii = 1:probable_next_conditions.number_contact_points
+    pressure_samples = zeros(Float64, (harmonics_qtt, ));
+        
+    rmax = Δr * (probable_next_conditions.number_contact_points - 1/2);
+    for ii = 1:harmonics_qtt
         # Angle of last contact point
-        θ = theta_from_cylindrical(Δr*(ii-1), probable_next_conditions.deformation_amplitudes)
+        θ = theta_from_cylindrical(rmax*(ii-1)/(harmonics_qtt-1), probable_next_conditions.deformation_amplitudes)
         heights[ii] += cos(θ) * (1 + sum(amplitudes .* (collectPl(cos(θ), lmax = order).parent))); # We need .parent as collectPl returns an offset zero-indexed offsetarray!
+        pressure_samples[ii] = sum(probable_next_conditions.pressure_amplitudes .* (collectPl(cos(θ), lmax = order).parent)) - sum(probable_next_conditions.pressure_amplitudes);
         if abs(heights[ii]) > spatial_tol
             is_it_acceptable = false;
-            break;
         end
     end
+    @assert min(pressure_samples) ≥ 0 "Negative pressures!";
+
     if is_it_acceptable == false
         # Heuristic tentative: Increase of reduce the pressure at given points to fit flat area.
-        θ = theta_from_cylindrical(Δr * (probable_next_conditions.number_contact_points - 1), 
-            probable_next_conditions.deformation_amplitudes);
+        θ = theta_from_cylindrical(rmax, probable_next_conditions.deformation_amplitudes);
             
-        y_velocity(θ::Float64)   = sin(θ) * cos(θ) * sum(probable_next_conditions.velocities_amplitudes .* 
+        y_velocity(θ::Float64)   = cos(θ)^2 * sum(probable_next_conditions.velocities_amplitudes .* 
                 (collectdnPl(cos(θ); lmax = order, n = 1).parent));
         #amp(θ::Float64) = 1 + ζ(θ);
         #r_positions = Δr * (0:(probable_next_conditions.new_number_contact_points-1));
-        #position_samples = [amp(theta_from_cylindrical(r)) for r in r_positions];
+        pressure_perturbation = zeros(Float64, (harmonics_qtt, ));
+
         if length(previous_tentatives) == 0
             # Modify pressure amplitudes so as to try to flatten the surface
+            pressure_perturbation = pressure_samples .* [h > 0 ? 1.1 : 0.9 for h in heights] .+ [(heights[ii] > 0 && isapprox(pressure_samples[ii], 0) ? 0.1 : 0 ) for ii = 1:harmonics_qtt]
+            #θ = theta_from_cylindrical(rmax*(ii-1)/(harmonics_qtt-1), probable_next_conditions.deformation_amplitudes)
 
+                #how_much_moved = heights[ii] - (previous_conditions[end].center_of_mass + cos(θ) * 
+                #    (1 + sum(previous_conditions[end].deformation_amplitudes .* (collectPl(cos(θ), lmax = order).parent))))
+                
+                # Deciding how to change pressure distribution
+                
         elseif length(previous_tentatives) == 1
-
+            
         else
 
         end
+        previous_tentatives = [previous_tentatives; (heights, pressure_samples)];
 
     end
 
