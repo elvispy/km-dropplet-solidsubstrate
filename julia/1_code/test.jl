@@ -7,7 +7,7 @@ x = cos.(t) .* r;
 y = sin.(t) .* r;
 
 @gif for i in eachindex(x)
-    scatter(x[i], y[i], lims = (-1, 1), label = "")
+    scatter([x[i]], [y[i]], lims = (-1, 1), label = "")
 end
 println("Hey!")
 readline()
