@@ -13,18 +13,6 @@ module tester_gnt
         return (z_from_θ(θ - ϵ) - z_from_θ(θ + ϵ)) / (r_from_θ(θ - ϵ) - r_from_θ(θ + ϵ))
     end
 
-    function testing_perpendicular(data, theta)
-        center_of_mass = 1+sum([(-1)^ii * data[ii] for ii in eachindex(data)]);
-        d = length(data);
-        ζ = zeta(data; order = d);
-        # ζ(θ::Float64) = sum(data .* (collectPl(cos(θ), lmax = d).parent)[2:end]);
-        x(θ::Float64) = sin(θ) * (1 + ζ(θ));
-        y(θ::Float64) = cos(θ) * (1 + ζ(θ));
-
-        return abs(sin(theta) * 1.0 + cos(theta) * calculate_exit_angle(data, theta)) 
-    end
-    manual_exit_angle(0.0.*[.1, .1, .1, .1, .1, .1], 3.14159)
-
  
     @testset "Testing exit angle function: No amplitudes" begin
         @test calculate_exit_angle([0.0], round(pi; digits = 20)) ≈ 0 atol=1e-6
