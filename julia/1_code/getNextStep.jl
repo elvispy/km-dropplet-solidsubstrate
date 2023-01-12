@@ -433,7 +433,7 @@ function calculate_exit_angle(amplitudes, angle)
     der(θ::Float64) = sum(amplitudes .* collectdnPl(cos(θ), lmax = d, n = 1)[1:end]);
 
     dzdr(θ::Float64) = (-sin(θ) * (1 + ζ(θ)) - cos(θ) * sin(θ) * der(θ)) /
-        cos(θ) * (1 + ζ(θ)) - sin(θ)^2 * der(θ);
+        (cos(θ) * (1 + ζ(θ)) - sin(θ)^2 * der(θ));
         
     return dzdr(angle);
 end
