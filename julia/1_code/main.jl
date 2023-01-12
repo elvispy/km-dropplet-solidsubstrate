@@ -4,14 +4,15 @@
     main
 """
 
-module km_main
+#module km_main
 
 # Exports
-export solveMotion
+#export solveMotion
 
 
 #using Printf;
 using Plots;
+using Symbolics
 default(legend = false);
 using JLD2, FileIO;
 using Polynomials;
@@ -35,7 +36,6 @@ using .problemStructsAndFunctions # Specialized structs and functions to be used
         Tries to solve the kinematic match problem between a deformable droplet and a 
         solid substrate under axistymmetric conditions.
 """
-
 function solveMotion(; # <== Keyword Arguments! 
     # OBS: All units are in CGS!
     undisturbed_radius::Float64 = .238,  # Radius of the undeformed spherical sphere 
@@ -44,15 +44,17 @@ function solveMotion(; # <== Keyword Arguments!
     initial_amplitude::Vector{Float64} = Float64[], # Initial amplitudes of the dropplet (Default = undisturbed) OBS: First index is A_1
     rhoS::Float64 = NaN,            # Sphere's density
     sigmaS::Float64 = NaN,          # Sphere's Surface Tension
-    g::Float6 = 9.8065e+2,          # Gravitational constant
-    harmonics_qtt::Int64 = 20,      # Number of harmonics to be used 
-    nb_pressure_samples::Int64 = NaN,      # Number of intervals in contact radius (NaN = Equal to number of harmonics)
+    g::Float64 = 9.8065e+2,          # Gravitational constant
+    harmonics_qtt::Int = 20,      # Number of harmonics to be used 
+    nb_pressure_samples::Int = -1,      # Number of intervals in contact radius (NaN = Equal to number of harmonics)
     max_dt::Float64 = 0.01,         # maximum allowed temporal time step
     angle_tol::Float64 = 5/360 * 2 * pi, # Angle tolerance to accept a solution (in radians) 
     spatial_tol::Float64 = 1e-8,    # Tolerance to accept that dropplet touches the substrate
     simulation_time::Float64 = 10.0,# Maximum allowed time
     live_plotting::Bool = false     # Whether to plot or not the live results
     )
+
+    println("Hey!")
 
     if isnan(nb_pressure_samples)
         spatial_step = 1/harmonics_qtt;
@@ -62,17 +64,18 @@ function solveMotion(; # <== Keyword Arguments!
 
     # Dimensionless Units
     time_unit = undisturbed_radius/initial_velocity; # Temporal dimensionless number
-    length_unit = rS;
+    length_unit = undisturbed_radius;
     velocity_unit = abs(initial_velocity);
     pressure_unit = rhoS * velocity_unit^2;
     froude_nb   = initial_velocity.^2/(g*undisturbed_radius);
     weber_nb    = rhoS * undisturbed_radius * initial_velocity.^2 / sigmaS; # Weber's number of the dropplet
-    reynolds_nb = undisturbed_radius * velocity_unit / nu; # Reynolds' number
+    # reynolds_nb = undisturbed_radius * velocity_unit / nu; # Reynolds' number
     mS = 4*pi*undisturbed_radius^3 * rhoS / 3;
     mass_unit = rhoS * length_unit^3;
 
     ## Initial conditions
     # Set dropplet's sphere height initial conditions
+    get_initial_height(amplitudes) = 1 - sum([amplitudes[ii] * (-1.0)^(ii+1) for (ii+1) in eachindex(amplitudes)])
     if initial_height == Inf
         initial_height = get_initial_height(initial_amplitude)
     else
@@ -91,6 +94,8 @@ function solveMotion(; # <== Keyword Arguments!
         amplitudes_velocities = amplitudes_velocities/velocity_unit;
     end
 
+    tan_tol = tan(angle_tol);
+
     initial_pressure_coefficients = zeros((harmonics_qtt, )) / pressure_unit; # Just to emphasize the units of these coefficients.
 
     if max_dt == 0
@@ -101,7 +106,7 @@ function solveMotion(; # <== Keyword Arguments!
 
     initial_time = 0;
     current_time = initial_time/time_unit;
-    final_time = simul_time/time_unit;
+    final_time = simulation_time/time_unit;
     current_index = 2; # This integer points to the next available index in variables that are going to 
                        # export data (index 1 is for initial conditions)
     maximum_index = ceil(Int64, (final_time - initial_time)/Δt) + 4;
@@ -152,7 +157,8 @@ function solveMotion(; # <== Keyword Arguments!
     PROBLEM_CONSTANTS = Dict(
         "froude_nb" => froude_nb,
         "weber_nb"  => weber_nb, 
-        "ball_mass" => mS/mass_unit;
+        "ball_mass" => mS/mass_unit,
+        "ODE_coeffs" => (f.(1:harmonics_qtt)).^2;
         "ODE_matrices" => ODE_matrices,
         "ODE_inverse_matrices" => ODE_inverse_matrices,
         "poly_antiderivatives" => polynomials_antiderivatives,
@@ -225,6 +231,7 @@ function solveMotion(; # <== Keyword Arguments!
     mechanical_energy_out = NaN; # TODO: Lab COef of restitution?
 
 
+    readline()
     while ( current_time < final_time)
         errortan = Inf * ones((5, ));
         recalculate = false;
@@ -233,7 +240,7 @@ function solveMotion(; # <== Keyword Arguments!
         probable_next_conditions[3], errortan[3] = getNextStep(previous_conditions, contact_points, Δt, spatial_step, 
                 spatial_tol, PROBLEM_CONSTANTS);
 
-        if abs(errortan[3]) < 1e-8 # If almost no error, we accept the solution
+        if abs(errortan[3]) < tan_tol # If almost no error, we accept the solution
             current_conditions = probable_next_conditions[3];
             previous_conditions = [previous_conditions[2:end]..., probable_next_conditions[3]];
         else # If there is some error, we try with diffferent contact points
@@ -250,7 +257,7 @@ function solveMotion(; # <== Keyword Arguments!
                     _, errortan[5] = getNextStep(previous_conditions, contact_points + 2, Δt, spatial_step, 
                     spatial_tol, PROBLEM_CONSTANTS);
 
-                    if abs(errortan[4]) < abs(errortan[5])
+                    if abs(errortan[4]) < abs(errortan[5]) && errortan[4] < tan_tol
                         # Accept new data 
                         previous_conditions = [previous_conditions[2:end]..., probable_next_conditions[4]];
                         current_conditions  = probable_next_conditions[4];
@@ -263,7 +270,7 @@ function solveMotion(; # <== Keyword Arguments!
                     _, errortan[1] = getNextStep(previous_conditions, contact_points - 2, Δt, spatial_step, 
                     spatial_tol, PROBLEM_CONSTANTS);
 
-                    if abs(errortan[2]) < abs(errortan[1])
+                    if abs(errortan[2]) < abs(errortan[1]) && errortan[2] < tan_tol
                         # Accept new data
                         previous_conditions = [previous_conditions[2:end]..., probable_next_conditions[2]];
                         current_conditions  = probable_next_conditions[2];
@@ -329,5 +336,10 @@ function solveMotion(; # <== Keyword Arguments!
 
 end # end main function declaration
 
-end # end module declaration
+#end # end module declaration
 
+if true
+    #using .km_main: solveMotion
+
+    solveMotion(initial_velocity = -0.1)
+end
