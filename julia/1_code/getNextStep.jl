@@ -1,4 +1,4 @@
-using LegendrePolynomials # TODO import only what is necessary
+using LegendrePolynomials, Interpolations, QuadGK # TODO import only what is necessary
 
 # To avoid overwriting a function. This is done only because getNextStep should never be called by itself
 if !@isdefined(theta_from_cylindrical);  include("./theta_from_cylindrical.jl"); end
@@ -49,7 +49,7 @@ function getNextStep(previous_conditions::Union{ProblemConditions, Vector{Proble
             end
 
             if is_it_acceptable == true; break;  end
-            if iteration == 100; println("Hey!") end
+            if iteration == 100; println("Hey!"); end
         end
 
         # Assume the tangency error is zero unless you find something wrong
@@ -77,7 +77,7 @@ function getNextStep(previous_conditions::Union{ProblemConditions, Vector{Proble
         end
 
     end # End main if
-
+    if errortan < 0; @warn "Errortan ≤ 0 ? "; end
     return probable_next_conditions, errortan
 end # end main function definition
 
@@ -92,12 +92,16 @@ function advance_conditions(probable_next_conditions::ProblemConditions, previou
     # if previous_conditions <: ProblemConditions; previous_conditions = [previous_conditions]; end
     n = length(previous_conditions); # Determines the order of the method
     1 ≤ n ≤ 2 ? nothing : throw("Only implicit euler and BDF-2 were implemented");
+    extract_symbol(jj::Int, field::String) = previous_conditions[jj].Symbol(field);
+
 
     nb_harmonics = previous_conditions[end].nb_harmonics
     pressure_amplitudes_tentative = probable_next_conditions.pressure_amplitudes;
 
     # Deformation amplitudes  at all necessary times
-    Y  = zeros(Float64, n+1, nb_harmonics, 2); 
+    Y = zeros(Float64, n+1, nb_harmonics, 2)
+    #DA = zeros(Float64, n+1, nb_harmonics);
+    #DV = zeros(Float64, n+1, nb_harmonics);
     # Independent term (pressure term) at all necessary times. 
     # (nb of times used, nb of harmonics, Spatial dimension)
     PB = zeros(Float64, 1, nb_harmonics, 2); 
@@ -118,40 +122,44 @@ function advance_conditions(probable_next_conditions::ProblemConditions, previou
 
     for ii = 2:nb_harmonics # Do I really need to translate into new coordinates?
         #Translating the problem into new coordinates
-        #=PB[1, ii, :] = PROBLEM_CONSTANTS["ODE_inverse_matrices"][:, :, ii] * 
-            [0; -ii * pressure_amplitudes_tentative[ii]]; =#
-        PB[1, ii, :] = [0; -ii * pressure_amplitudes_tentative[ii]];
+        PB[1, ii, :] = PROBLEM_CONSTANTS["ODE_inverse_matrices"][:, :, ii] * 
+            [0; -ii * pressure_amplitudes_tentative[ii]]; 
+        # PB[ii] = -ii * pressure_amplitudes_tentative[ii];
         
         for jj = 1:n
-            Y[jj, ii, :] = [previous_conditions[jj].deformation_amplitudes[ii]; 
-                previous_conditions[jj].velocities_amplitudes[ii]];
+            Y[jj, ii, :] = PROBLEM_CONSTANTS["ODE_inverse_matrices"] * [
+                previous_conditions[jj].deformation_amplitudes[ii],
+                previous_conditions[jj].deformation_velocities[ii]
+                
+            ];
+            #DA[jj, ii] = previous_conditions[jj].deformation_amplitudes[ii]; 
+            #DV[jj, ii] = previous_conditions[jj].deformation_velocities[ii];
         end
 
         # Extracting tentative solution
-        # ω_i = PROBLEM_CONSTANTS["omegas_frequencies"][ii];
-        # diagexp(dt::Float64) = exp(diagm(-[-1.0im * dt * ω_i, 1.0im * dt * ω_i]));
+        ω_i = PROBLEM_CONSTANTS["omegas_frequencies"][ii];
+        diagexp(dt::Float64) = exp(diagm(-[-1.0im * dt * ω_i, 1.0im * dt * ω_i]));
 
         # This funciton will extract how much time passed 
-        # time_diference(jj::Int) = Δt + previous_conditions[end].current_time - previous_conditions[jj].current_time;
+        time_diference(jj::Int) = Δt + previous_conditions[end].current_time - previous_conditions[jj].current_time;
 
         rhs_vector = zeros(Float64, (2, ));
         for jj = 1:n
-            # rhs_vector = rhs_vector + coefs[jj] * diagexp(time_diference(jj)) * Y[jj, ii, :]
-            rhs_vector = rhs_vector + coefs[jj] * Y[jj, ii, :]
+            rhs_vector = rhs_vector + coefs[jj] * diagexp(time_diference(jj)) * Y[jj, ii, :]
+            #rhs_vector = rhs_vector + coefs[jj] * Y[jj, ii, :]
         end
-        Y[end, ii, :] = (Δt * PB[1, ii, :]  - rhs_vector)/ coefs[end] 
+        # Y[end, ii, :] = (Δt * PB[1, ii, :]  - rhs_vector)/ coefs[end] 
          
-        # Y[end, ii, :] = PROBLEM_CONSTANTS["ODE_matrices"][:, :, ii] * Y[end, ii, :];        
+        Y[end, ii, :] = PROBLEM_CONSTANTS["ODE_matrices"][:, :, ii] * Y[end, ii, :];        
     end
 
     amplitudes_tent = Y[end, :, 1];
     amplitudes_velocities_tent = Y[end, :, 2];
 
 
-    extract_symbol(jj::Int, field::String) = previous_conditions[jj].Symbol(field);
     new_CM_velocity_times_dt = - sum(coefs[1:n] .* extract_symbol.(1:n, "center_of_mass_velocity")) * Δt;
 
-    Cl(l::Integer) = nb_harmonics >= l >= 1 ? l * (l-1) / (2l-1)     * pressure_amplitudes_tentative[ll-1]: 0;
+    Cl(l::Integer) = nb_harmonics >= l >= 1 ? l * (l-1) / (2l-1)     * pressure_amplitudes_tentative[ll-1] : 0;
     Dl(l::Integer) = nb_harmonics >  l >= 1 ? (l+2) * (l+1) / (2l+3) * pressure_amplitudes_tentative[ll+1] : 0;
 
     new_CM_velocity_times_dt +=  - Δt^2 * PROBLEM_CONSTANTS["froude_nb"]; 
@@ -224,33 +232,40 @@ function update_tentative_heuristic(probable_next_conditions::ProblemConditions,
     # If some height is out of bound, try to adapt pressure coefficients
     if is_it_acceptable == false
         # Heuristic tentative: Increase of reduce the pressure at given points to fit flat area.
-        θ_max= theta_from_cylindrical(rmax, probable_next_conditions.deformation_amplitudes);
+        θ_max = theta_from_cylindrical(rmax, probable_next_conditions.deformation_amplitudes);
             
-        y_velocity(θ::Float64)   = cos(θ)^2 * sum(probable_next_conditions.velocities_amplitudes .* 
-                (collectdnPl(cos(θ); lmax = order, n = 1).parent));
+        # y_velocity(θ::Float64)   = cos(θ)^2 * sum(probable_next_conditions.velocities_amplitudes .* 
+        #         (collectdnPl(cos(θ); lmax = order, n = 1).parent));
         #r_positions = Δr * (0:(probable_next_conditions.new_number_contact_points-1));
+
+        # Perturbation at LinRange(0, rmax, harmonics_qtt) to flatten the surface
         pressure_perturbation = zeros(Float64, (harmonics_qtt, ));
 
         if length(previous_tentatives) < 2
             # Modify pressure amplitudes so as to try to flatten the surface
             pressure_perturbation = previous_tentatives[end]["pressure_samples"] .* [h > 0 ? 0.1 : -0.1 for h in previous_tentatives[end]["heights"]] .+ 
-                [(heights[ii] > 0 && isapprox(previous_tentatives[end]["heights"][ii], 0) ? 0.1 : 0 ) for ii = 1:harmonics_qtt]
+                [(heights[ii] > 0 && isapprox(previous_tentatives[end]["heights"][ii], 0; atol = 1e-6) ? 0.1 : 0 ) for ii = 1:harmonics_qtt]
             #θ = theta_from_cylindrical(rmax*(ii-1)/(harmonics_qtt-1), probable_next_conditions.deformation_amplitudes)
         else
             # First tentative: assume linearity between the last two tentatives
+            # This interpolator tries to 
             interpolator(d1::Dict, d2::Dict, idx::Int)::Float64 = 
                  (d2["heights"][idx] * d1["pressure_samples"][idx] 
                 - d1["heights"][idx] * d2["pressure_samples"][idx]) / 
                  (d2["heights"][idx] - d1["heights"][idx]);
             d1 = previous_tentatives[end];
             d2 = previous_tentatives[end - 1];
+
+            # We may avoid substracting here
             pressure_perturbation = interpolator.(d1, d2, 1:harmonics_qtt) .- previous_tentatives[end]["pressure_samples"];
         end
 
         # Compute new pressure coefficients:
-        itp = interpolate(pressure_perturbation);
-        f(x::Float64)::Flaot64 = itp(1 + (harmonics_qtt-1)/rmax * x);
-        ps(θ::Float64) = (θ < θ_max) ? 0 : f(r_from_spherical(θ, probable_next_conditions.deformation_amplitudes));
+
+        # Interpolate linearly between pressure points
+        itp = interpolate(pressure_perturbation, BSpline(Linear()));
+        f(r::Float64)::Flaot64 = itp(1 + (harmonics_qtt-1)/rmax * r);
+        ps(θ::Float64) = (θ < θ_max) ? 0.0 : f(r_from_spherical(θ, probable_next_conditions.deformation_amplitudes));
 
         projected_pressure_amplitudes = project_amplitudes(ps, harmonics_qtt; endpoints = [θ_max, π])
 
@@ -282,7 +297,6 @@ function project_amplitudes(f::Function, harmonics_qtt::Int; endpoints)::Vector{
     for ii = 1:harmonics_qtt
         projected_amplitudes[ii], _ = quadgk((θ) -> Pl(cos(θ), ii) * f(θ) * sin(θ), endpoints[1], endpoints[2]);
     end
-
     return project_amplitudes
 end
 
