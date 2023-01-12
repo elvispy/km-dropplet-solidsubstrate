@@ -1,6 +1,6 @@
 using ReTest
 
-module PSF_tester
+module tester_psf
     using ReTest, ClassicalOrthogonalPolynomials, LinearAlgebra, Polynomials
     include("./problemStructsAndFunctions.jl")
     using .problemStructsAndFunctions: LP, sinPoly, integrate_poly;

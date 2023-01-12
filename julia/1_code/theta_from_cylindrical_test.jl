@@ -1,6 +1,6 @@
 using ReTest
 
-module tester
+module tester_tfc
     using ReTest
     include("./theta_from_cylindrical.jl")
     include("./zeta.jl");
