@@ -1,10 +1,12 @@
 using LegendrePolynomials # TODO import only what is necessary
 
-include("./theta_from_cylindrical.jl");
-include("./r_from_spherical.jl");
-include("./problemConditionStruct.jl");
-include("./zeta.jl");
-include("./maximum_contact_radius.jl");
+# To avoid overwriting a function. This is done only because getNextStep should never be called by itself
+if !@isdefined(theta_from_cylindrical);  include("./theta_from_cylindrical.jl"); end
+if !@isdefined(r_from_spherical); include("./r_from_spherical.jl"); end
+if !@isdefined(ProblemConditions); include("./problemConditionStruct.jl"); end
+if !@isdefined(zeta);  include("./zeta.jl"); end
+if !@isdefined(maximum_contact_radius);  include("./maximum_contact_radius.jl"); end
+
 # TODO: Properly document this function
 
 """
@@ -18,8 +20,8 @@ function getNextStep(previous_conditions::Union{ProblemConditions, Vector{Proble
 
     if previous_conditions <: ProblemConditions; previous_conditions = [previous_conditions]; end
 
-    errortan = Inf;
     if new_number_contact_points < 0 
+        errortan = Inf;
         probable_next_conditions = ProblemConditions(NaN, 
             [NaN], [NaN], [NaN], NaN, NaN, NaN, NaN, NaN
         )
@@ -47,16 +49,29 @@ function getNextStep(previous_conditions::Union{ProblemConditions, Vector{Proble
             if iteration == 100; println("Hey!") end
         end
 
+        errortan = 0;
+
         # Check if solution makes sense
         r_max = maximum_contact_radius(probable_next_conditions);
+        ζ = zeta(probable_next_conditions);
+        z(theta) = probable_next_conditions.center_of_mass +  cos(theta) * (1 + ζ(theta));
         if r_max < Δr * (probable_next_conditions.number_contact_points - 1/2)
             return getNextStep(probable_next_conditions, -1, NaN, NaN, NaN, nothing);
+        else
+            # Check that dropplet does not intersect with the substrate
+            for r_i in (Δr * probable_next_conditions.number_contact_points):(Δr/2):r_max
+                if z(theta_from_cylindrical(r_i, probable_next_conditions)) < spatial_tol
+                    errortan = Inf;
+                end
+            end
         end
-        # TODO: Check that the dropplet is not intercepting the substrate
+
 
         # Calculate errortan
-        rmax = Δr * (probable_next_conditions.number_contact_points - 1/2);
-        errortan = calculate_exit_angle(probable_next_conditions, theta_from_cylindrical(rmax, probable_next_conditions))
+        if new_number_contact_points != 0
+            rmax = Δr * (probable_next_conditions.number_contact_points - 1/2);
+            errortan = calculate_exit_angle(probable_next_conditions, theta_from_cylindrical(rmax, probable_next_conditions))
+        end
 
 
 
@@ -66,7 +81,10 @@ function getNextStep(previous_conditions::Union{ProblemConditions, Vector{Proble
 
 end # end main function definition
 
+"""
 
+This function will advance the problem conditions given the current ones, advancing a time step Δt
+"""
 function advance_conditions(probable_next_conditions::ProblemConditions, previous_conditions::Vector{ProblemConditions},  
     new_nb_contact_points::Int64, Δt::Float64, PROBLEM_CONSTANTS
     )::ProblemConditions
@@ -78,9 +96,9 @@ function advance_conditions(probable_next_conditions::ProblemConditions, previou
     nb_harmonics = previous_conditions[end].nb_harmonics
     pressure_amplitudes_tentative = probable_next_conditions.pressure_amplitudes;
 
-    # Deformation amplitudes in the new coordinate system at all necessary times
+    # Deformation amplitudes  at all necessary times
     Y  = zeros(Float64, n+1, nb_harmonics, 2); 
-    # Independent term (pressure term) in new coordinates and at all necessary times. 
+    # Independent term (pressure term) at all necessary times. 
     # (nb of times used, nb of harmonics, Spatial dimension)
     PB = zeros(Float64, 1, nb_harmonics, 2); 
 
@@ -100,54 +118,49 @@ function advance_conditions(probable_next_conditions::ProblemConditions, previou
 
     for ii = 2:nb_harmonics # Do I really need to translate into new coordinates?
         #Translating the problem into new coordinates
-        PB[1, ii, :] = PROBLEM_CONSTANTS["ODE_inverse_matrices"][:, :, ii] * 
-            [0; -ii * pressure_amplitudes_tentative[ii]];
+        #=PB[1, ii, :] = PROBLEM_CONSTANTS["ODE_inverse_matrices"][:, :, ii] * 
+            [0; -ii * pressure_amplitudes_tentative[ii]]; =#
+        PB[1, ii, :] = [0; -ii * pressure_amplitudes_tentative[ii]];
         
         for jj = 1:n
-            Y[jj, ii, :] = PROBLEM_CONSTANTS["ODE_inverse_matrices"][:, :, ii] * 
-                [previous_conditions[jj].deformation_amplitudes[ii]; previous_conditions[jj].velocities_amplitudes[ii]];
+            Y[jj, ii, :] = [previous_conditions[jj].deformation_amplitudes[ii]; 
+                previous_conditions[jj].velocities_amplitudes[ii]];
         end
 
         # Extracting tentative solution
-        ω_i = PROBLEM_CONSTANTS["omegas_frequencies"][ii];
-        diagexp(dt::Float64) = exp(diagm(-[-1.0im * dt * ω_i, 1.0im * dt * ω_i]));
-        dt(jj::Int) = Δt + previous_conditions[end].current_time - previous_conditions[jj].current_time;
+        # ω_i = PROBLEM_CONSTANTS["omegas_frequencies"][ii];
+        # diagexp(dt::Float64) = exp(diagm(-[-1.0im * dt * ω_i, 1.0im * dt * ω_i]));
+
+        # This funciton will extract how much time passed 
+        # time_diference(jj::Int) = Δt + previous_conditions[end].current_time - previous_conditions[jj].current_time;
 
         rhs_vector = zeros(Float64, (2, ));
         for jj = 1:n
-            rhs_vector = rhs_vector + coefs[jj] * diagexp(dt(jj)) * Y[jj, ii, :]
+            # rhs_vector = rhs_vector + coefs[jj] * diagexp(time_diference(jj)) * Y[jj, ii, :]
+            rhs_vector = rhs_vector + coefs[jj] * Y[jj, ii, :]
         end
         Y[end, ii, :] = (Δt * PB[1, ii, :]  - rhs_vector)/ coefs[end] 
          
-        Y[end, ii, :] = PROBLEM_CONSTANTS["ODE_matrices"][:, :, ii] * Y[end, ii, :];        
+        # Y[end, ii, :] = PROBLEM_CONSTANTS["ODE_matrices"][:, :, ii] * Y[end, ii, :];        
     end
 
     amplitudes_tent = Y[end, :, 1];
     amplitudes_velocities_tent = Y[end, :, 2];
 
+
     extract_symbol(jj::Int, field::String) = previous_conditions[jj].Symbol(field);
     new_CM_velocity_times_dt = - sum(coefs[1:n] .* extract_symbol.(1:n, "center_of_mass_velocity")) * Δt;
 
-    Cl(l::Integer) = nb_harmonics >= l >= 1 ? l*(l-1)/(2*l-1) : 0;
-    Dl(l::Integer) = nb_harmonics >= l >= 1 ? (l+2) * (l+1) / (2*l + 3) : 0;
+    Cl(l::Integer) = nb_harmonics >= l >= 1 ? l * (l-1) / (2l-1)     * pressure_amplitudes_tentative[ll-1]: 0;
+    Dl(l::Integer) = nb_harmonics >  l >= 1 ? (l+2) * (l+1) / (2l+3) * pressure_amplitudes_tentative[ll+1] : 0;
 
     new_CM_velocity_times_dt +=  - Δt^2 * PROBLEM_CONSTANTS["froude_nb"]; 
     #Special case: First harmonics
     new_CM_velocity_times_dt +=  - Δt^2 * pressure_amplitudes_tentative[1] 
     # General case
     for ll = 2:(nb_harmonics-1)
-        new_CM_velocity_times_dt += 3 * Δt^2 *
-            amplitudes_tent[ll] / (2*ll+1) * (
-                Cl(ll) * pressure_amplitudes_tentative[ll-1] - 
-                Dl(ll) * pressure_amplitudes_tentative[ll+1]
-            ) 
+        new_CM_velocity_times_dt += 3 * Δt^2 * (amplitudes_tent[ll] / (2*ll+1)) * (Cl(ll) - Dl(ll)) 
     end
-
-    # Special case: Last harmonic
-    new_CM_velocity_times_dt += 3 * Δt^2 *  
-        amplitudes_tent[nb_harmonics] / (2 * nb_harmonics + 1) * (
-            Cl(nb_harmonics) * pressure_amplitudes_tentative[nb_harmonics - 1]
-        ) 
 
     new_CM_velocity_times_dt /= coefs[end];
     
@@ -255,7 +268,7 @@ function update_tentative_heuristic(probable_next_conditions::ProblemConditions,
     pressure_amps = zeta(probable_next_conditions.pressure_amplitudes);
     ζ = zeta(probable_next_conditions)
     rmax = Δr * (probable_next_conditions.number_contact_points - 1/2);
-    
+
     for ii = 1:harmonics_qtt
         # Angle of last contact point
         θ = theta_from_cylindrical(rmax*(ii-1)/(harmonics_qtt-1), probable_next_conditions.deformation_amplitudes)
