@@ -18,12 +18,15 @@ using Polynomials;
 #using Dates;
 #using CSV;
 #using DataFrames;
-
+using Logging
+LOG_SAVE_PATH = "../2_pipeline" 
+io = open("log.txt", "w+");
+lg = SimpleLogger(io);
+global_logger(lg);
 
 #Imports
 include("./problemStructsAndFunctions.jl");
 using .problemStructsAndFunctions # Specialized structs and functions to be used in this file
-#--- Nothing here
 
 
 # Main function
@@ -163,6 +166,7 @@ function solveMotion(; # <== Keyword Arguments!
             initial_height, initial_velocity, 0);
     previous_conditions = [current_conditions, current_conditions]; # TODO: Define this array properly to implement BDF2.
 
+    currdirr = pwd();
     if ("julia" in readdir());  cd("julia\\");  end
     if ("1_code" in readdir()); cd("1_code\\"); end
     A = match(r"pipeline", file_name)
@@ -181,6 +185,8 @@ function solveMotion(; # <== Keyword Arguments!
         )
         CSV.write(file_name, headers_data_frame)
     end
+
+    # Create logging file
 
     if plotter == true
         plot_width = ceil(Int64, 3 * N);

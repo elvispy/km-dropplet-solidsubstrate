@@ -52,11 +52,13 @@ function getNextStep(previous_conditions::Union{ProblemConditions, Vector{Proble
         if r_max < Δr * (probable_next_conditions.number_contact_points - 1/2)
             return getNextStep(probable_next_conditions, -1, NaN, NaN, NaN, nothing);
         end
+        # TODO: Check that the dropplet is not intercepting the substrate
 
         # Calculate errortan
-        # ζ = zeta(probable_next_conditions.deformation_amplitudes; order = probable_next_conditions.nb_harmonics);
-        rmax = Δr * (probable_next_conditions.number_contact_points - 1/2)
+        rmax = Δr * (probable_next_conditions.number_contact_points - 1/2);
         errortan = calculate_exit_angle(probable_next_conditions, theta_from_cylindrical(rmax, probable_next_conditions))
+
+
 
     end # End main if
 
@@ -73,12 +75,13 @@ function advance_conditions(probable_next_conditions::ProblemConditions, previou
     n = length(previous_conditions); # Determines the order of the method
     1 ≤ n ≤ 2 ? nothing : throw("Only implicit euler and BDF-2 were implemented");
 
-    nb_harmonics = current_conditions.nb_harmonics
+    nb_harmonics = previous_conditions[end].nb_harmonics
     pressure_amplitudes_tentative = probable_next_conditions.pressure_amplitudes;
 
     # Deformation amplitudes in the new coordinate system at all necessary times
     Y  = zeros(Float64, n+1, nb_harmonics, 2); 
-    # Independent term (pressure term) in new coordinates and at all necessary times. (nb of times used, nb of harmonics, Spatial dimension)
+    # Independent term (pressure term) in new coordinates and at all necessary times. 
+    # (nb of times used, nb of harmonics, Spatial dimension)
     PB = zeros(Float64, 1, nb_harmonics, 2); 
 
     amplitudes_tent = zeros(Float64, (nb_harmonics, ));
@@ -122,8 +125,8 @@ function advance_conditions(probable_next_conditions::ProblemConditions, previou
     amplitudes_tent = Y[end, :, 1];
     amplitudes_velocities_tent = Y[end, :, 2];
 
-    exct(jj::Int, field::String) = previous_conditions[jj].Symbol(field);
-    new_CM_velocity_times_dt = - sum(coefs[1:n] .* exct.(1:n, "center_of_mass_velocity")) * Δt;
+    extract_symbol(jj::Int, field::String) = previous_conditions[jj].Symbol(field);
+    new_CM_velocity_times_dt = - sum(coefs[1:n] .* extract_symbol.(1:n, "center_of_mass_velocity")) * Δt;
 
     Cl(l::Integer) = nb_harmonics >= l >= 1 ? l*(l-1)/(2*l-1) : 0;
     Dl(l::Integer) = nb_harmonics >= l >= 1 ? (l+2) * (l+1) / (2*l + 3) : 0;
@@ -148,7 +151,7 @@ function advance_conditions(probable_next_conditions::ProblemConditions, previou
 
     new_CM_velocity_times_dt /= coefs[end];
     
-    new_center_of_mass = (new_CM_velocity_times_dt - sum(coefs[1:n] .* exct.(1:n, "center_of_mass")));
+    new_center_of_mass = (new_CM_velocity_times_dt - sum(coefs[1:n] .* extract_symbol.(1:n, "center_of_mass")));
     new_center_of_mass /= coefs[end];
 
     return ProblemConditions(
@@ -252,6 +255,7 @@ function update_tentative_heuristic(probable_next_conditions::ProblemConditions,
     pressure_amps = zeta(probable_next_conditions.pressure_amplitudes);
     ζ = zeta(probable_next_conditions)
     rmax = Δr * (probable_next_conditions.number_contact_points - 1/2);
+    
     for ii = 1:harmonics_qtt
         # Angle of last contact point
         θ = theta_from_cylindrical(rmax*(ii-1)/(harmonics_qtt-1), probable_next_conditions.deformation_amplitudes)
