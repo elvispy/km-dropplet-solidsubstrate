@@ -9,26 +9,26 @@
 # Exports
 #export solveMotion
 
+if !@isdefined(ProblemConditions)
+    #using Printf;
+    using Plots;
+    using Symbolics
+    default(legend = false);
+    using JLD2, FileIO;
+    using Polynomials;
+    #using Dates;
+    #using CSV;
+    #using DataFrames;
+    using Logging
+    LOG_SAVE_PATH = "../2_pipeline" 
+    io = open("log.txt", "w+");
+    lg = SimpleLogger(io);
+    global_logger(lg);
 
-#using Printf;
-using Plots;
-using Symbolics
-default(legend = false);
-using JLD2, FileIO;
-using Polynomials;
-#using Dates;
-#using CSV;
-#using DataFrames;
-using Logging
-LOG_SAVE_PATH = "../2_pipeline" 
-io = open("log.txt", "w+");
-lg = SimpleLogger(io);
-global_logger(lg);
-
-#Imports
-include("./problemStructsAndFunctions.jl");
-using .problemStructsAndFunctions # Specialized structs and functions to be used in this file
-
+    #Imports
+    include("./problemStructsAndFunctions.jl");
+    using .problemStructsAndFunctions # Specialized structs and functions to be used in this file
+end
 
 # Main function
 """
@@ -42,7 +42,7 @@ function solveMotion(; # <== Keyword Arguments!
     initial_height::Float64 = Inf,    # Initial position of the sphere center of mass of the sphere (Inf = start barely touching)
     initial_velocity::Float64 = -1.0, # Initial velocity of the sphere 
     initial_amplitude::Vector{Float64} = Float64[], # Initial amplitudes of the dropplet (Default = undisturbed) OBS: First index is A_1
-    amplitudes_velocities::Vector{Float64} = Float64[]
+    amplitudes_velocities::Vector{Float64} = Float64[],
     rhoS::Float64 = NaN,            # Sphere's density
     sigmaS::Float64 = NaN,          # Sphere's Surface Tension
     g::Float64 = 9.8065e+2,          # Gravitational constant
@@ -76,7 +76,7 @@ function solveMotion(; # <== Keyword Arguments!
 
     ## Initial conditions
     # Set dropplet's sphere height initial conditions
-    get_initial_height(amplitudes) = 1 - sum([amplitudes[ii] * (-1.0)^(ii+1) for (ii+1) in eachindex(amplitudes)])
+    get_initial_height(amplitudes) = 1 - sum([(amplitudes[ii] * (-1.0)^(ii+1)) for ii in eachindex(amplitudes)])
     if initial_height == Inf
         initial_height = get_initial_height(initial_amplitude)
     else
@@ -127,9 +127,7 @@ function solveMotion(; # <== Keyword Arguments!
      =#   
     LEGENDRE_POLYNOMIALS = LP(harmonics_qtt);
     LPdX = Vector{Function}(undef, harmonics_qtt);
-    polynomials_antiderivatives = Matrix{Function}(undef, harmonics_qtt, harmonics_qtt);
-
-    
+    polynomials_antiderivatives = Matrix{Polynomial{Rational{BigInt}, :x}}(undef, harmonics_qtt, harmonics_qtt);
 
     @variables x
     for ii = 1:harmonics_qtt
@@ -176,6 +174,7 @@ function solveMotion(; # <== Keyword Arguments!
     currdirr = pwd();
     if ("julia" in readdir());  cd("julia\\");  end
     if ("1_code" in readdir()); cd("1_code\\"); end
+    file_name = "lol"
     A = match(r"pipeline", file_name)
     if A !== nothing
         #A = A[1]; 
@@ -195,7 +194,7 @@ function solveMotion(; # <== Keyword Arguments!
 
     # Create logging file
 
-    if plotter == true
+    if live_plotting == true
         plot_width = ceil(Int64, 3 * N);
         xplot = LinRange(0, plot_width/N, plot_width);
         ηX = [-xplot[end:-1:2]; xplot] * length_unit;

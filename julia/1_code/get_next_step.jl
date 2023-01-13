@@ -169,7 +169,7 @@ function advance_conditions(probable_next_conditions::ProblemConditions, previou
     #Special case: First harmonics
     new_CM_velocity_times_dt +=  - Δt^2 * pressure_amplitudes_tentative[1] 
     # General case
-    for ll = 2:(nb_harmonics-1)
+    for ll = 2:nb_harmonics
         new_CM_velocity_times_dt += 3 * Δt^2 * (amplitudes_tent[ll] / (2*ll+1)) * (Cl(ll) - Dl(ll)) 
     end
 
