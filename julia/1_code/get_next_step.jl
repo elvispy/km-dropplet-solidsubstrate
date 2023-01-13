@@ -1,4 +1,7 @@
-using LegendrePolynomials, Interpolations, QuadGK # TODO import only what is necessary
+using LegendrePolynomials
+using Interpolations
+using QuadGK # TODO import only what is necessary
+using LinearAlgebra
 
 # To avoid overwriting a function. This is done only because get_next_step should never be called by itself
 if !@isdefined(theta_from_cylindrical);  include("./theta_from_cylindrical.jl"); end
@@ -92,19 +95,19 @@ function advance_conditions(probable_next_conditions::ProblemConditions, previou
     # if previous_conditions <: ProblemConditions; previous_conditions = [previous_conditions]; end
     n = length(previous_conditions); # Determines the order of the method
     1 ≤ n ≤ 2 ? nothing : throw("Only implicit euler and BDF-2 were implemented");
-    extract_symbol(jj::Int, field::String) = previous_conditions[jj].Symbol(field);
+    extract_symbol(jj::Int, field::String) = getfield(previous_conditions[jj], Symbol(field));
 
 
     nb_harmonics = previous_conditions[end].nb_harmonics
     pressure_amplitudes_tentative = probable_next_conditions.pressure_amplitudes;
 
     # Deformation amplitudes  at all necessary times
-    Y = zeros(Float64, n+1, nb_harmonics, 2)
+    Y = zeros(ComplexF64, n+1, nb_harmonics, 2)
     #DA = zeros(Float64, n+1, nb_harmonics);
     #DV = zeros(Float64, n+1, nb_harmonics);
     # Independent term (pressure term) at all necessary times. 
     # (nb of times used, nb of harmonics, Spatial dimension)
-    PB = zeros(Float64, 1, nb_harmonics, 2); 
+    PB = zeros(ComplexF64, 1, nb_harmonics, 2); 
 
     amplitudes_tent = zeros(Float64, (nb_harmonics, ));
     amplitudes_velocities_tent = zeros(Float64, (nb_harmonics, ));
@@ -127,7 +130,7 @@ function advance_conditions(probable_next_conditions::ProblemConditions, previou
         # PB[ii] = -ii * pressure_amplitudes_tentative[ii];
         
         for jj = 1:n
-            Y[jj, ii, :] = PROBLEM_CONSTANTS["ODE_inverse_matrices"] * [
+            Y[jj, ii, :] = PROBLEM_CONSTANTS["ODE_inverse_matrices"][:, :, ii] * [
                 previous_conditions[jj].deformation_amplitudes[ii],
                 previous_conditions[jj].deformation_velocities[ii]
                 
@@ -138,29 +141,29 @@ function advance_conditions(probable_next_conditions::ProblemConditions, previou
 
         # Extracting tentative solution
         ω_i = PROBLEM_CONSTANTS["omegas_frequencies"][ii];
-        diagexp(dt::Float64) = exp(diagm(-[-1.0im * dt * ω_i, 1.0im * dt * ω_i]));
+        diagexp(dt::Float64) = exp(diagm(-dt .* [-1.0im * ω_i, 1.0im * ω_i]));
 
         # This funciton will extract how much time passed 
         time_diference(jj::Int) = Δt + previous_conditions[end].current_time - previous_conditions[jj].current_time;
 
-        rhs_vector = zeros(Float64, (2, ));
+        rhs_vector = zeros(ComplexF64, (2, ));
         for jj = 1:n
             rhs_vector = rhs_vector + coefs[jj] * diagexp(time_diference(jj)) * Y[jj, ii, :]
             #rhs_vector = rhs_vector + coefs[jj] * Y[jj, ii, :]
         end
-        # Y[end, ii, :] = (Δt * PB[1, ii, :]  - rhs_vector)/ coefs[end] 
+        Y[end, ii, :] = (Δt * PB[1, ii, :]  - rhs_vector)/ coefs[end] 
          
         Y[end, ii, :] = PROBLEM_CONSTANTS["ODE_matrices"][:, :, ii] * Y[end, ii, :];        
     end
 
-    amplitudes_tent = Y[end, :, 1];
-    amplitudes_velocities_tent = Y[end, :, 2];
+    amplitudes_tent = real.(Y[end, :, 1]);
+    amplitudes_velocities_tent = real.(Y[end, :, 2]);
 
 
     new_CM_velocity_times_dt = - sum(coefs[1:n] .* extract_symbol.(1:n, "center_of_mass_velocity")) * Δt;
 
-    Cl(l::Integer) = nb_harmonics >= l >= 1 ? l * (l-1) / (2l-1)     * pressure_amplitudes_tentative[ll-1] : 0;
-    Dl(l::Integer) = nb_harmonics >  l >= 1 ? (l+2) * (l+1) / (2l+3) * pressure_amplitudes_tentative[ll+1] : 0;
+    Cl(l::Integer) = nb_harmonics >= l >= 1 ? l * (l-1) / (2l-1)     * pressure_amplitudes_tentative[l-1] : 0;
+    Dl(l::Integer) = nb_harmonics >  l >= 1 ? (l+2) * (l+1) / (2l+3) * pressure_amplitudes_tentative[l+1] : 0;
 
     new_CM_velocity_times_dt +=  - Δt^2 * PROBLEM_CONSTANTS["froude_nb"]; 
     #Special case: First harmonics
@@ -180,7 +183,7 @@ function advance_conditions(probable_next_conditions::ProblemConditions, previou
         amplitudes_tent,
         amplitudes_velocities_tent,
         pressure_amplitudes_tentative,
-        current_conditions.current_time + Δt,
+        previous_conditions[end].current_time + Δt,
         Δt,
         new_center_of_mass,
         new_CM_velocity_times_dt/Δt, # Divide by Δt!
@@ -234,7 +237,7 @@ function update_tentative_heuristic(probable_next_conditions::ProblemConditions,
         # Heuristic tentative: Increase of reduce the pressure at given points to fit flat area.
         θ_max = theta_from_cylindrical(rmax, probable_next_conditions.deformation_amplitudes);
             
-        # y_velocity(θ::Float64)   = cos(θ)^2 * sum(probable_next_conditions.velocities_amplitudes .* 
+        # y_velocity(θ::Float64)   = cos(θ)^2 * sum(probable_next_conditions.deformation_velocities .* 
         #         (collectdnPl(cos(θ); lmax = order, n = 1).parent));
         #r_positions = Δr * (0:(probable_next_conditions.new_number_contact_points-1));
 
@@ -274,7 +277,7 @@ function update_tentative_heuristic(probable_next_conditions::ProblemConditions,
         probable_next_conditions = ProblemConditions(
             probable_next_conditions.nb_harmonics,
             probable_next_conditions.deformation_amplitudes,
-            probable_next_conditions.velocities_amplitudes,
+            probable_next_conditions.deformation_velocities,
             probable_next_conditions.pressure_amplitudes .+ projected_pressure_amplitudes,
             probable_next_conditions.current_time,
             probable_next_conditions.dt,
@@ -389,7 +392,7 @@ function advance_conditions_dep(probable_next_conditions::ProblemConditions, cur
         # Translating problem variables to new coordinates
 
         Y_old[:, ii] = PROBLEM_CONSTANTS["ODE_inverse_matrices"][:, :, ii] * 
-            [current_conditions.deformation_amplitudes[ii]; current_conditions.velocities_amplitudes[ii]];
+            [current_conditions.deformation_amplitudes[ii]; current_conditions.deformation_velocities[ii]];
         C_tent[:, ii] = PROBLEM_CONSTANTS["ODE_inverse_matrices"][:, :, ii] * 
             [0; -ii * pressure_amplitudes_tentative[ii]];
         C_old[:, ii]  = PROBLEM_CONSTANTS["ODE_inverse_matrices"][:, :, ii] * 

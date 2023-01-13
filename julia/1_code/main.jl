@@ -42,6 +42,7 @@ function solveMotion(; # <== Keyword Arguments!
     initial_height::Float64 = Inf,    # Initial position of the sphere center of mass of the sphere (Inf = start barely touching)
     initial_velocity::Float64 = -1.0, # Initial velocity of the sphere 
     initial_amplitude::Vector{Float64} = Float64[], # Initial amplitudes of the dropplet (Default = undisturbed) OBS: First index is A_1
+    amplitudes_velocities::Vector{Float64} = Float64[]
     rhoS::Float64 = NaN,            # Sphere's density
     sigmaS::Float64 = NaN,          # Sphere's Surface Tension
     g::Float64 = 9.8065e+2,          # Gravitational constant
@@ -140,17 +141,17 @@ function solveMotion(; # <== Keyword Arguments!
         LPdX[ii] = integrate_poly(LEGENDRE_POLYNOMIALS[ii]);
     end
 
-    f(n::Integer) = sqrt(n .* (n+2) .* (n-1) ./ weber_nb);
+    f(n::Integer) = sqrt(n * (n+2) * (n-1) / weber_nb);
 
-    omegas_frequencies = f(1:harmonics_qtt)';
+    omegas_frequencies = f.(1:harmonics_qtt)';
 
-    ODE_matrices = zeros(2, 2, harmonics_qtt); # Y' = -PDP^-1 Y + B ==> (exp(tD)*Y)' = e^(tD) P^-1 B;
-    ODE_matrices[1, 1, :] =  ones(1, harmonics_qtt);
-    ODE_matrices[1, 2, :] =  ones(1, harmonics_qtt);
+    ODE_matrices = zeros(ComplexF64, 2, 2, harmonics_qtt); # Y' = -PDP^-1 Y + B ==> (exp(tD)*Y)' = e^(tD) P^-1 B;
+    ODE_matrices[1, 1, :] =  ones(ComplexF64, 1, harmonics_qtt);
+    ODE_matrices[1, 2, :] =  ones(ComplexF64, 1, harmonics_qtt);
     ODE_matrices[2, 1, :] =  1.0im * omegas_frequencies;
     ODE_matrices[2, 2, :] = -1.0im * omegas_frequencies;
 
-    ODE_inverse_matrices = 1/2 * ones(2, 2, N);
+    ODE_inverse_matrices = 1/2 * ones(ComplexF64, 2, 2, harmonics_qtt);
     ODE_inverse_matrices[1, 2, :] = -0.5im ./ omegas_frequencies;
     ODE_inverse_matrices[2, 2, :] =  0.5im ./ omegas_frequencies;
 
@@ -158,7 +159,7 @@ function solveMotion(; # <== Keyword Arguments!
         "froude_nb" => froude_nb,
         "weber_nb"  => weber_nb, 
         "ball_mass" => mS/mass_unit,
-        "ODE_coeffs" => (f.(1:harmonics_qtt)).^2;
+        "omegas_frequencies" => omegas_frequencies,
         "ODE_matrices" => ODE_matrices,
         "ODE_inverse_matrices" => ODE_inverse_matrices,
         "poly_antiderivatives" => polynomials_antiderivatives,
@@ -216,7 +217,7 @@ function solveMotion(; # <== Keyword Arguments!
     give_dimensions(X::ProblemConditions) = ProblemConditions(
         X.nb_harmonics,
         X.deformation_amplitudes * length_unit,
-        X.velocities_amplitudes * velocity_unit,
+        X.deformation_velocities * velocity_unit,
         X.pressure_amplitudes * (mass_unit * length_unit / (time_unit^2 * length_unit^2)),
         X.current_time * time_unit,
         X.dt * time_unit,
