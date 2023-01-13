@@ -2,7 +2,7 @@ using ReTest
 
 module tester_gnt
     using ReTest
-    include("./getNextStep.jl")
+    include("./get_next_step.jl")
 
     function manual_exit_angle(amplitudes, θ; ϵ = 1e-9)
         order = length(amplitudes);

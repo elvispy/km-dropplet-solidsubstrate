@@ -1,12 +1,12 @@
 
 module problemStructsAndFunctions
-export ProblemConditions, getNextStep, theta_from_cylindrical, LP, sinPoly, integrate_poly
+export ProblemConditions, get_next_step, theta_from_cylindrical, LP, sinPoly, integrate_poly
 using Polynomials
     
 
 include("./problemConditionStruct.jl");
 
-include("./getNextStep.jl");
+include("./get_next_step.jl");
 include("./theta_from_cylindrical.jl");
 
 

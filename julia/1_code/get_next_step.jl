@@ -1,6 +1,6 @@
 using LegendrePolynomials, Interpolations, QuadGK # TODO import only what is necessary
 
-# To avoid overwriting a function. This is done only because getNextStep should never be called by itself
+# To avoid overwriting a function. This is done only because get_next_step should never be called by itself
 if !@isdefined(theta_from_cylindrical);  include("./theta_from_cylindrical.jl"); end
 if !@isdefined(r_from_spherical); include("./r_from_spherical.jl"); end
 if !@isdefined(ProblemConditions); include("./problemConditionStruct.jl"); end
@@ -10,11 +10,11 @@ if !@isdefined(maximum_contact_radius);  include("./maximum_contact_radius.jl");
 # TODO: Properly document this function
 
 """
-    getNextStep
+    get_next_step
 Tries to advance one step (Δt) in the solution of the dropplet / solid substrate interaction
 Uses implicit euler or BDF-2, depending on the number amoount of data available
 """
-function getNextStep(previous_conditions::Union{ProblemConditions, Vector{ProblemConditions}}, 
+function get_next_step(previous_conditions::Union{ProblemConditions, Vector{ProblemConditions}}, 
     new_number_contact_points::Int64, Δt::Float64, Δr::Float64, spatial_tol::Float64, PROBLEM_CONSTANTS
     )::Tuple{ProblemConditions, Float64}
 
@@ -60,7 +60,7 @@ function getNextStep(previous_conditions::Union{ProblemConditions, Vector{Proble
         ζ = zeta(probable_next_conditions);
         z(theta) = probable_next_conditions.center_of_mass +  cos(theta) * (1 + ζ(theta));
         if r_max < Δr * (probable_next_conditions.number_contact_points - 1/2)
-            return getNextStep(probable_next_conditions, -1, NaN, NaN, NaN, nothing);
+            return get_next_step(probable_next_conditions, -1, NaN, NaN, NaN, nothing);
         else
             # Check that dropplet does not intersect with the substrate
             for r_i in (Δr * probable_next_conditions.number_contact_points):(Δr/2):r_max

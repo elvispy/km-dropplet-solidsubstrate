@@ -237,7 +237,7 @@ function solveMotion(; # <== Keyword Arguments!
         recalculate = false;
 
         # First, we try to solve with the same number of contact points
-        probable_next_conditions[3], errortan[3] = getNextStep(previous_conditions, contact_points, Δt, spatial_step, 
+        probable_next_conditions[3], errortan[3] = get_next_step(previous_conditions, contact_points, Δt, spatial_step, 
                 spatial_tol, PROBLEM_CONSTANTS);
 
         if abs(errortan[3]) < tan_tol # If almost no error, we accept the solution
@@ -245,16 +245,16 @@ function solveMotion(; # <== Keyword Arguments!
             previous_conditions = [previous_conditions[2:end]..., probable_next_conditions[3]];
         else # If there is some error, we try with diffferent contact points
             # Lets try with one more point
-            probable_next_conditions[4], errortan[4] = getNextStep(previous_conditions, contact_points + 1, Δt, spatial_step, 
+            probable_next_conditions[4], errortan[4] = get_next_step(previous_conditions, contact_points + 1, Δt, spatial_step, 
             spatial_tol, PROBLEM_CONSTANTS);
             # Lets try with one point less
-            probable_next_conditions[2], errortan[2] = getNextStep(previous_conditions, contact_points - 1, Δt, spatial_step, 
+            probable_next_conditions[2], errortan[2] = get_next_step(previous_conditions, contact_points - 1, Δt, spatial_step, 
             spatial_tol, PROBLEM_CONSTANTS);
               
             if (abs(errortan[3]) > abs(errortan[4]) ||  (abs(errortan[3]) > abs(errortan[2])))
                 if abs(errortan[4]) <= abs(errortan[2])
                     # Now lets check with one more point to be sure
-                    _, errortan[5] = getNextStep(previous_conditions, contact_points + 2, Δt, spatial_step, 
+                    _, errortan[5] = get_next_step(previous_conditions, contact_points + 2, Δt, spatial_step, 
                     spatial_tol, PROBLEM_CONSTANTS);
 
                     if abs(errortan[4]) < abs(errortan[5]) && errortan[4] < tan_tol
@@ -267,7 +267,7 @@ function solveMotion(; # <== Keyword Arguments!
                     end
                 else
                     # now lets check if errortan is good enough with one point less
-                    _, errortan[1] = getNextStep(previous_conditions, contact_points - 2, Δt, spatial_step, 
+                    _, errortan[1] = get_next_step(previous_conditions, contact_points - 2, Δt, spatial_step, 
                     spatial_tol, PROBLEM_CONSTANTS);
 
                     if abs(errortan[2]) < abs(errortan[1]) && errortan[2] < tan_tol
