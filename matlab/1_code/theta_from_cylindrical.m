@@ -1,13 +1,11 @@
-function tt = theta_from_cylindrical(r, amplitudes, PROBLEM_CONSTANTS)
+function tt = theta_from_cylindrical(r, amplitudes)
     if isstruct(amplitudes); amplitudes = amplitudes.deformation_amplitudes; end
-    
-    % order = length(amplitudes);
-    zeta = zeta_generator(amplitudes, PROBLEM_CONSTANTS);
-    collectdnPl = PROBLEM_CONSTANTS.collectdnPl;
-    % zeta(theta::Float64)   = @. $sum(amplitudes * (collectPl(cos(theta), lmax = order).parent)[2:end]);
+    if size(amplitudes, 2) > 1; amplitudes = amplitudes'; end
+
+    zeta = zeta_generator(amplitudes);
     
     % Derivative of the function
-    f_prime = @(theta) cos(theta) * (1 + zeta(theta)) - sin(theta)^2 * sum(dot(amplitudes, collectdnPl(cos(theta))));
+    f_prime = @(theta) cos(theta) .* (1 + zeta(theta)) - sin(theta).^2 .* sum(dot(amplitudes, collectdnPl(length(amplitudes), cos(theta))), 1);
     
     % Function to be minimized00
     f_objective = @(theta) sin(theta) * (1 + zeta(theta)) - r;

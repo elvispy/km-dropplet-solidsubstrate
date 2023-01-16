@@ -47,15 +47,15 @@ function [probable_next_conditions, errortan] = ...
         errortan = 0;
 
         % Check if solution makes sense
-        r_max = maximum_contact_radius(probable_next_conditions, PROBLEM_CONSTANTS);
-        zeta = zeta_generator(probable_next_conditions, PROBLEM_CONSTANTS);
+        r_max = maximum_contact_radius(probable_next_conditions);
+        zeta = zeta_generator(probable_next_conditions);
         z = @(theta) probable_next_conditions.center_of_mass +  cos(theta) .* (1 + zeta(theta));
         if r_max < dr * (probable_next_conditions.number_contact_points - 1/2)
             [probable_next_conditions, errortan] = get_next_step(probable_next_conditions, -1, NaN, NaN, NaN, NaN);
         else
             % Check that dropplet does not intersect with the substrate
             for r_i = (dr * probable_next_conditions.number_contact_points):(dr/2):r_max
-                if z(theta_from_cylindrical(r_i, probable_next_conditions, PROBLEM_CONSTANTS)) < -spatial_tol
+                if z(theta_from_cylindrical(r_i, probable_next_conditions)) < -spatial_tol
                     errortan = Inf;
                 end
             end
@@ -271,15 +271,15 @@ function [probable_next_conditions, is_it_acceptable, previous_tentatives] = ...
     % First, lets check if the given probable next condition is acceptable or not.
     heights = probable_next_conditions.center_of_mass * ones(1, NB_SAMPLES);
     pressure_samples = zeros(1, NB_SAMPLES);
-    pressure_amps = zeta_generator(probable_next_conditions.pressure_amplitudes, PROBLEM_CONSTANTS);
+    pressure_amps = zeta_generator(probable_next_conditions.pressure_amplitudes);
 
-    zeta = zeta_generator(probable_next_conditions, PROBLEM_CONSTANTS);
+    zeta = zeta_generator(probable_next_conditions);
     rmax = dr * (probable_next_conditions.number_contact_points - 1/2);
 
     % Check if heights are in bounds
     for ii = 1:NB_SAMPLES
         % Angle of last contact point
-        theta = theta_from_cylindrical(rmax*(ii-1)/(NB_SAMPLES-1), probable_next_conditions.deformation_amplitudes, PROBLEM_CONSTANTS);
+        theta = theta_from_cylindrical(rmax*(ii-1)/(NB_SAMPLES-1), probable_next_conditions.deformation_amplitudes);
         heights(ii) = heights(ii) +  cos(theta) * (1 + zeta(theta)); 
         pressure_samples(ii) = pressure_amps(theta) - sum(probable_next_conditions.pressure_amplitudes);
         if abs(heights(ii)) > spatial_tol
@@ -294,7 +294,7 @@ function [probable_next_conditions, is_it_acceptable, previous_tentatives] = ...
     % If some height is out of bound, try to adapt pressure coefficients
     if is_it_acceptable == false
         % Heuristic tentative: Increase of reduce the pressure at given points to fit flat area.
-        theta_max = theta_from_cylindrical(rmax, probable_next_conditions.deformation_amplitudes, PROBLEM_CONSTANTS);
+        theta_max = theta_from_cylindrical(rmax, probable_next_conditions.deformation_amplitudes);
             
         % y_velocity(theta::Float64)   = cos(theta)^2 * sum(probable_next_conditions.deformation_velocities .* 
         %         (collectdnPl(cos(theta); lmax = order, n = 1).parent));
@@ -327,7 +327,7 @@ function [probable_next_conditions, is_it_acceptable, previous_tentatives] = ...
         % Interpolate linearly between pressure points
 
         f = @(r) interp1(rmax * linspace(0, (1+1e-5), NB_SAMPLES), pressure_perturbation, r); %    1 + (harmonics_qtt-1)/rmax * r);
-        ps = @(theta) f(r_from_spherical(theta, probable_next_conditions.deformation_amplitudes, PROBLEM_CONSTANTS));
+        ps = @(theta) f(r_from_spherical(theta, probable_next_conditions.deformation_amplitudes));
 
         projected_pressure_perturbations = project_amplitudes(ps, harmonics_qtt, [theta_max, pi], PROBLEM_CONSTANTS);
 
@@ -365,14 +365,15 @@ end
 %    calculate_exit_angle(::Vector{Float64}, ::Float64)
 %Calculates the exit angle at the contact angle theta
 
-function exit_angle = calculate_exit_angle(amplitudes, angle, PROBLEM_CONSTANTS)
+function exit_angle = calculate_exit_angle(amplitudes, angle)
     % if typeof(amplitudes) <: ProblemConditions; amplitudes = amplitudes.deformation_amplitudes; end
-    % d = length(amplitudes);
-    zeta = zeta_generator(amplitudes, PROBLEM_CONSTANTS);
-    der = @(theta) sum(amplitudes .* PROBLEM_CONSTANTS.collectdnPl(cos(theta)));
+    
+    zeta = zeta_generator(amplitudes);
+    if size(amplitudes, 2) > 1; amplitudes = amplitudes'; end
+    der = @(theta) sum(amplitudes .* collectdnPl(length(amplitudes), cos(theta)), 1);
 
-    dzdr = @(theta)  (-sin(theta) .* (1 + zeta(theta)) - cos(theta) * sin(theta) * der(theta)) / ...
-        (cos(theta) * (1 + zeta(theta)) - sin(theta).^2 * der(theta));
+    dzdr = @(theta)  (-sin(theta) .* (1 + zeta(theta)) - cos(theta) .* sin(theta) .* der(theta)) ./ ...
+        (cos(theta) .* (1 + zeta(theta)) - sin(theta).^2 .* der(theta));
         
     exit_angle =  dzdr(angle);
 end

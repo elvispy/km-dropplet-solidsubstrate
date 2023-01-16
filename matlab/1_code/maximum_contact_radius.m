@@ -1,16 +1,16 @@
-function rmax = maximum_contact_radius(amplitudes, PROBLEM_CONSTANTS)
+function rmax = maximum_contact_radius(amplitudes)
     if isstruct(amplitudes); amplitudes = amplitudes.deformation_amplitudes; end
-    
-    collectdnPl = PROBLEM_CONSTANTS.collectdnPl;
-    collectd2nPl = PROBLEM_CONSTANTS.collectd2nPl;
-    % order = length(amplitudes);
-    zeta = zeta_generator(amplitudes, PROBLEM_CONSTANTS); 
+    if size(amplitudes, 2) > 1; amplitudes = amplitudes'; end
+    %collectdnPl = PROBLEM_CONSTANTS.collectdnPl;
+    %collectd2nPl = PROBLEM_CONSTANTS.collectd2nPl;
+    order = length(amplitudes);
+    zeta = zeta_generator(amplitudes); 
     drdtheta = @(theta) cos(theta) * (1 + zeta(theta)) - ...
-        sin(theta)^2 * sum(dot(amplitudes, collectdnPl(cos(theta))));
+        sin(theta)^2 * sum(dot(amplitudes, collectdnPl(order, cos(theta))));
 
     dr2dtheta2 = @(theta) - sin(theta) * (1 + zeta(theta)) - 2 * cos(theta) * sin(theta) * ...
-        sum(dot(amplitudes, collectdnPl(cos(theta)))) + ...
-        sin(theta)^3 * sum(dot(amplitudes, collectd2nPl(cos(theta))));
+        sum(dot(amplitudes, collectdnPl(order, cos(theta))), 1) + ...
+        sin(theta)^3 .* sum(dot(amplitudes, collectdnPl(order, cos(theta), 2)), 1);
 
     theta = pi/2 + pi/4;
     tol_theta = 1e-7;
@@ -29,6 +29,6 @@ function rmax = maximum_contact_radius(amplitudes, PROBLEM_CONSTANTS)
         end
     end
 
-    rmax = r_from_spherical(theta, amplitudes, PROBLEM_CONSTANTS);
+    rmax = r_from_spherical(theta, amplitudes);
 
 end

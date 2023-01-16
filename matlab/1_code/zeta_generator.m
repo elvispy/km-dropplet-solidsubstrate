@@ -1,13 +1,14 @@
-function f = zeta_generator(amplitudes, varargin)
+function eta = zeta_generator(amplitudes, varargin)
     if isstruct(amplitudes); amplitudes = amplitudes.deformation_amplitudes; end
     
     order = length(amplitudes);
     
     if nargin == 1
-        warning("I'm deprecated!");
-        f = @(theta) arrayfun(@(ang) sum(amplitudes .* legendreP(1:order, cos(ang))), theta, 'UniformOutput', false);
+        if size(amplitudes, 2) > 1; amplitudes = amplitudes'; end
+        eta = @(theta) sum(amplitudes .* collectPl(order, cos(theta)), 1);
     else
+        warning("I'm deprecated!");
         LP = varargin{1}.LEGENDRE_POLYNOMIALS;
-        f = @(theta) arrayfun(@(ang) sum(dot(amplitudes, arrayfun(@(idx) LP{idx}(cos(ang)), 1:order))), theta);
+        eta = @(theta) arrayfun(@(ang) sum(dot(amplitudes, arrayfun(@(idx) LP{idx}(cos(ang)), 1:order))), theta);
     end
 end

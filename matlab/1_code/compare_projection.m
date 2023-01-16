@@ -1,7 +1,7 @@
 function compare_projection(angles, values, amplitudes)
-
+    % This script compares the projections 
     z = zeta_generator(amplitudes);
-    exact_angles = linspace(0, pi, 200);
+    exact_angles = linspace(0, pi, 2000);
     exact_values = arrayfun(@(ang) z(ang), exact_angles);
     
     figure;
