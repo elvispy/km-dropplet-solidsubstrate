@@ -43,11 +43,11 @@ function solveMotion(; # <== Keyword Arguments!
     initial_velocity::Float64 = -1.0, # Initial velocity of the sphere 
     initial_amplitude::Vector{Float64} = Float64[], # Initial amplitudes of the dropplet (Default = undisturbed) OBS: First index is A_1
     amplitudes_velocities::Vector{Float64} = Float64[],
-    rhoS::Float64 = NaN,            # Sphere's density
-    sigmaS::Float64 = NaN,          # Sphere's Surface Tension
+    rhoS::Float64 = 1.0,###            # Sphere's density
+    sigmaS::Float64 = 1.0,###          # Sphere's Surface Tension
     g::Float64 = 9.8065e+2,          # Gravitational constant
     harmonics_qtt::Int = 20,      # Number of harmonics to be used 
-    nb_pressure_samples::Int = -1,      # Number of intervals in contact radius (NaN = Equal to number of harmonics)
+    nb_pressure_samples::Int = 20,      # Number of intervals in contact radius (NaN = Equal to number of harmonics)
     max_dt::Float64 = 0.01,         # maximum allowed temporal time step
     angle_tol::Float64 = 5/360 * 2 * pi, # Angle tolerance to accept a solution (in radians) 
     spatial_tol::Float64 = 1e-8,    # Tolerance to accept that dropplet touches the substrate
@@ -64,9 +64,9 @@ function solveMotion(; # <== Keyword Arguments!
     end
 
     # Dimensionless Units
-    time_unit = undisturbed_radius/initial_velocity; # Temporal dimensionless number
     length_unit = undisturbed_radius;
     velocity_unit = abs(initial_velocity);
+    time_unit = undisturbed_radius/velocity_unit; # Temporal dimensionless number
     pressure_unit = rhoS * velocity_unit^2;
     froude_nb   = initial_velocity.^2/(g*undisturbed_radius);
     weber_nb    = rhoS * undisturbed_radius * initial_velocity.^2 / sigmaS; # Weber's number of the dropplet
@@ -83,13 +83,13 @@ function solveMotion(; # <== Keyword Arguments!
         @assert initial_height >= get_initial_height(initial_amplitude)
         initial_height = initial_height/length_unit;
     end
-    if length(initial_amplitude) == 1
+    if length(initial_amplitude) <= 1
         initial_amplitude = zeros((harmonics_qtt, ));
     else
         initial_amplitude = initial_amplitude/length_unit;
     end
 
-    if length(amplitudes_velocities) == 1
+    if length(amplitudes_velocities) <= 1
         amplitudes_velocities = zeros((harmonics_qtt, ));
     else
         amplitudes_velocities = amplitudes_velocities/velocity_unit;

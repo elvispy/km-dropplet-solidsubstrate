@@ -272,7 +272,7 @@ function update_tentative_heuristic(probable_next_conditions::ProblemConditions,
 
         projected_pressure_amplitudes = project_amplitudes(ps, harmonics_qtt; endpoints = [θ_max, π])
 
-        @assert  all((i) -> i > 0, probable_next_conditions.pressure_amplitudes .+ project_amplitudes) "Need to fix this"
+        @assert  all((i) -> i > 0, probable_next_conditions.pressure_amplitudes .+ projected_pressure_amplitudes) "Need to fix this"
 
         probable_next_conditions = ProblemConditions(
             probable_next_conditions.nb_harmonics,
