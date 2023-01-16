@@ -8,23 +8,23 @@ function solve_motion()
     %Tries to solve the full kinematic match between a dropplet
     % and a solid substrate in vacuum conditions.
 
-    %% Handling default arguments
+    %% Handling default arguments. All units are in cgs.
     
     undisturbed_radius = .238;  % Radius of the undeformed spherical sphere 
     initial_height = Inf;    % Initial position of the sphere center of mass of the sphere (Inf = start barely touching)
-    initial_velocity = -1.0; % Initial velocity of the sphere 
-    initial_amplitude = []; % Initial amplitudes of the dropplet (Default = undisturbed) OBS: First index is A_1
+    initial_velocity = -.5; % Initial velocity of the sphere 
+    initial_amplitudes = Inf; % Initial amplitudes of the dropplet (Default = undisturbed) OBS: First index is A_1
     amplitudes_velocities = [];
-    rhoS = NaN;            % Sphere's density
-    sigmaS = NaN;          % Sphere's Surface Tension
-    g = 9.8065e+2;          % Gravitational constant
-    harmonics_qtt = 20;      % Number of harmonics to be used 
-    nb_pressure_samples = -1;      % Number of intervals in contact radius (NaN = Equal to number of harmonics)
-    max_dt = 0.01;         % maximum allowed temporal time step
+    rhoS = 1.0e-3;%%%%            % Sphere's density
+    sigmaS = 72.20;%%%%%          % Sphere's Surface Tension
+    g = 9.8065;%%%          % Gravitational constant
+    harmonics_qtt = 40;      % Number of harmonics to be used 
+    nb_pressure_samples = nan;      % Number of intervals in contact radius (NaN = Equal to number of harmonics)
+    max_dt = 1e-3;         % maximum allowed temporal time step
     angle_tol = 5/360 * 2 * pi; % Angle tolerance to accept a solution (in radians) 
     spatial_tol = 1e-8;    % Tolerance to accept that dropplet touches the substrate
     simulation_time = 10.0;% Maximum allowed time
-    live_plotting = false;     % Whether to plot or not the live results
+    live_plotting = true;     % Whether to plot or not the live results
     
     if isnan(nb_pressure_samples)
         spatial_step = 1/harmonics_qtt;
@@ -33,9 +33,9 @@ function solve_motion()
     end
 
     % Dimensionless Units
-    time_unit = undisturbed_radius/initial_velocity; % Temporal dimensionless number
     length_unit = undisturbed_radius;
     velocity_unit = abs(initial_velocity);
+    time_unit = undisturbed_radius/velocity_unit; % Temporal dimensionless number
     pressure_unit = rhoS * velocity_unit^2;
     froude_nb   = initial_velocity.^2/(g*undisturbed_radius);
     weber_nb    = rhoS * undisturbed_radius * initial_velocity.^2 / sigmaS; % Weber's number of the dropplet
@@ -46,29 +46,31 @@ function solve_motion()
     
     % % Initial conditions
     % Set dropplet's sphere height initial conditions
-    get_initial_height = @(amplitudes) 1 - sum(arrayfun(@(idx) amplitudes(ii) * (-1.0)^(ii+1), 1:length(amplitudes)));
+    get_initial_height = @(amplitudes) 1 - sum(arrayfun(@(idx) amplitudes(idx) * (-1.0)^(idx), 1:length(amplitudes)));
     
-    if initial_height == Inf
-        initial_height = get_initial_height(initial_amplitude);
+    if length(initial_amplitudes) ~= harmonics_qtt
+        initial_amplitudes = zeros(1, harmonics_qtt);
     else
-        assert(initial_height >= get_initial_height(initial_amplitude));
+        initial_amplitudes = initial_amplitudes/length_unit;
+    end
+    if initial_height == Inf
+        initial_height = get_initial_height(initial_amplitudes);
+    else
+        assert(initial_height >= get_initial_height(initial_amplitudes));
         initial_height = initial_height/length_unit;
     end
-    if length(initial_amplitude) == 1
-        initial_amplitude = zeros(harmonics_qtt, 1);
-    else
-        initial_amplitude = initial_amplitude/length_unit;
-    end
+    
+    initial_velocity = initial_velocity/velocity_unit;
 
-    if length(amplitudes_velocities) == 1
-        amplitudes_velocities = zeros(harmonics_qtt, 1);
+    if length(amplitudes_velocities) ~= harmonics_qtt
+        amplitudes_velocities = zeros(1, harmonics_qtt);
     else
         amplitudes_velocities = amplitudes_velocities/velocity_unit;
     end
 
     tan_tol = tan(angle_tol);
 
-    initial_pressure_coefficients = zeros(harmonics_qtt, 1) / pressure_unit; % Just to emphasize the units of these coefficients.
+    initial_pressure_coefficients = zeros(1, harmonics_qtt) / pressure_unit; % Just to emphasize the units of these coefficients.
 
     if max_dt == 0
         dt = 0.01; 
@@ -81,7 +83,7 @@ function solve_motion()
     final_time = simulation_time/time_unit;
     current_index = 2;%  This integer points to the next available index in variables that are going to 
                       %  export data (index 1 is for initial conditions)
-    maximum_index = ceil(Int64, (final_time - initial_time)/dt) + 4;
+    maximum_index = ceil((final_time - initial_time)/dt) + 4;
     number_of_extra_indexes = 0;
 
     contact_points = 0;%  Initial number of contact points
@@ -105,11 +107,11 @@ function solve_motion()
 %         LPdX[ii] = integrate_poly(LEGENDRE_POLYNOMIALS[ii]);
 %     end
 
-    f = @(n)  sqrt(n * (n+2) * (n-1) / weber_nb);
+    f = @(n)  sqrt(n .* (n+2) .* (n-1) / weber_nb);
 
     omegas_frequencies = f(1:harmonics_qtt)';
 
-    ODE_matrices = zeros(ComplexF64, 2, 2, harmonics_qtt); % Y' = -PDP^-1 Y + B ==> (exp(tD)*Y)' = e^(tD) P^-1 B;
+    ODE_matrices = zeros(2, 2, harmonics_qtt); % Y' = -PDP^-1 Y + B ==> (exp(tD)*Y)' = e^(tD) P^-1 B;
     ODE_matrices(1, 1, :) =  ones( 1, harmonics_qtt);
     ODE_matrices(1, 2, :) =  ones( 1, harmonics_qtt);
     ODE_matrices(2, 1, :) =  1.0i * omegas_frequencies;
@@ -119,9 +121,34 @@ function solve_motion()
     ODE_inverse_matrices(1, 2, :) = -0.5i ./ omegas_frequencies;
     ODE_inverse_matrices(2, 2, :) =  0.5i ./ omegas_frequencies;
     
+    syms x;
+    LEGENDRE_POLYNOMIALS = arrayfun( ...
+        @(idx) matlabFunction(legendreP(idx, x)), 1:harmonics_qtt, ...
+        'UniformOutput', false);
+    
+    LEGENDRE_DERIVATIVES = arrayfun( ...
+        @(idx) matlabFunction(diff(legendreP(idx, x), 1)), 1:harmonics_qtt,...
+        'UniformOutput', false);
+    LEGENDRE_DERIVATIVES{1} = @(x) (LEGENDRE_DERIVATIVES{1}());
+    
+    LEGENDRE_SECOND_DERIVATIVES = arrayfun( ...
+        @(idx) matlabFunction(diff(legendreP(idx, x), 2)), 1:harmonics_qtt,...
+        'UniformOutput', false);
+    LEGENDRE_SECOND_DERIVATIVES{1} = @(x) LEGENDRE_SECOND_DERIVATIVES{1}();
+    LEGENDRE_SECOND_DERIVATIVES{2} = @(x) LEGENDRE_SECOND_DERIVATIVES{2}();
+    
+    collectdnPl = @(x) arrayfun(@(idx) LEGENDRE_DERIVATIVES{idx}(x), 1:harmonics_qtt);
+    collectd2nPl = @(x) arrayfun(@(idx) LEGENDRE_SECOND_DERIVATIVES{idx}(x), 1:harmonics_qtt);
+    
     %names = ["froude_nb" "weber_nb" "omegas_frequencies" "ODE_matrices" "ODE_inverse_matrices"];
     PROBLEM_CONSTANTS = struct("froude_nb", froude_nb, "weber_nb", weber_nb, ...
-        "omegas_frequencies", omegas_frequencies, "ODE_matrices", ODE_matrices, "ODE_inverse_matrices", ODE_inverse_matrices);
+        "omegas_frequencies", omegas_frequencies, "ODE_matrices", ODE_matrices, ...
+        "ODE_inverse_matrices", ODE_inverse_matrices, ...
+        "LEGENDRE_POLYNOMIALS", {LEGENDRE_POLYNOMIALS}, ...
+        "LEGENDRE_DERIVATIVES", {LEGENDRE_DERIVATIVES}, ...
+        "collectdnPl", collectdnPl, ...
+        "collectd2nPl", collectd2nPl, ...
+        "pressure_unit", pressure_unit);
     % PROBLEM_CONSTANTS = 
 %     PROBLEM_CONSTANTS = Dict(
 %         "froude_nb" => froude_nb,
@@ -136,16 +163,26 @@ function solve_motion()
 %     )
 
     probable_next_conditions = cell(5, 1); % probable_next_conditions = Vector{ProblemConditions}(undef, 5);
-    current_conditions = struct( ...
-        "nb_harmonics", harmonics_qtt, "deformation_amplitudes", initial_amplitude, ...
-        "deformation_velocities", amplitudes_velocities, "pressure_deformation", initial_pressure_coefficients, ...
-        "current_time", current_time, "dt", dt, "center_of_mass", initial_height, "center_of_mass_velocity", initial_velocity, "nb_contact_points", 0);
+    current_conditions = ProblemConditions( ...
+        harmonics_qtt, ...
+        initial_amplitudes, ...
+        amplitudes_velocities, ...
+        initial_pressure_coefficients, ...
+        current_time, ...
+        dt, ...
+        initial_height, ...
+        initial_velocity, 0);
     
     %current_conditions = ProblemConditions(harmonics_qtt, initial_amplitude, 
     %        amplitudes_velocities, initial_pressure_coefficients, 0.0, dt, 
     %        initial_height, initial_velocity, 0);
-    previous_conditions = {current_conditions, current_conditions}; % TODO: Define this array properly to implement BDF2.
-
+    previous_conditions = {current_conditions, current_conditions}; 
+    % TODO: Define this array properly to implement BDF2.
+    previous_conditions{1}.current_time = previous_conditions{2}.current_time - dt;
+    previous_conditions{1}.center_of_mass_velocity = ...
+        previous_conditions{2}.center_of_mass_velocity + dt/froude_nb;
+    previous_conditions{1}.center_of_mass = ...
+        previous_conditions{2}.center_of_mass - previous_conditions{2}.center_of_mass_velocity * dt;
 %     currdirr = pwd();
 %     if ("julia" in readdir());  cd("julia\\");  end
 %     if ("1_code" in readdir()); cd("1_code\\"); end
@@ -169,15 +206,15 @@ function solve_motion()
     % Create logging file
 
     if live_plotting == true
-        plot_width = ceil(Int64, 3 * N);
-        xplot = LinRange(0, plot_width/N, plot_width);
-        eta_x = [-xplot(end:-1:2); xplot] * length_unit;
+        %plot_width = ceil(3 * length_unit);
+        %xplot = linspace(0, plot_width/N, plot_width);
+        %eta_x = [-xplot(end:-1:2); xplot] * length_unit;
         % ?U  = zeros(1, 2 * plot_width - 1);
         %step = ceil(Int64, N/15);
 
         theta = linspace(0, 2*pi, 500);
-        circleX = length_unit * sin(theta);
-        circleY = length_unit * cos(theta);
+        %circleX = length_unit * sin(theta);
+        %circleY = length_unit * cos(theta);
         
         
     end
@@ -185,7 +222,17 @@ function solve_motion()
    % % Preparing post-processing
    % TODO: Write post processing variables
    %  Preallocate variables that will be exported (All of them have units!)
-%     recorded_conditions = Vector{ProblemConditions}(undef, (maximum_index, )); 
+   recorded_conditions =cell(maximum_index, 1); % Vector{ProblemConditions}(undef, (maximum_index, )); 
+   give_dimensions = @(X) ProblemConditions( ...
+       X.nb_harmonics, ...
+        X.deformation_amplitudes * length_unit, ...
+        X.deformation_velocities * velocity_unit, ...
+        X.pressure_amplitudes * (mass_unit * length_unit / (time_unit^2 * length_unit^2)), ...
+        X.current_time * time_unit, ...
+        X.dt * time_unit, ...
+        X.center_of_mass * length_unit, ...
+        X.center_of_mass_velocity * velocity_unit, ...
+        X.number_contact_points); 
 %     give_dimensions(X::ProblemConditions) = ProblemConditions(
 %         X.nb_harmonics,
 %         X.deformation_amplitudes * length_unit,
@@ -197,114 +244,149 @@ function solve_motion()
 %         X.center_of_mass_velocity * velocity_unit,
 %         X.number_contact_points
 %     );
-%     recorded_conditions[1] = give_dimensions(previous_conditions[end]);
+     recorded_conditions{1} = give_dimensions(previous_conditions{end});
 %     
 %    %  Coefficient of restitution
 %     mechanical_energy_in = NaN;
 %     mechanical_energy_out = NaN; % TODO: Lab COef of restitution?
 
-    
-while ( current_time < final_time)
-    errortan = Inf * ones(5, 1);
-    recalculate = false;
 
-    % First, we try to solve with the same number of contact points
-    [probable_next_conditions{3}, errortan(3)] = get_next_step(previous_conditions, contact_points, dt, spatial_step, ...
+    while ( current_time < final_time)
+        errortan = Inf * ones(5, 1);
+        recalculate = false;
+
+        % First, we try to solve with the same number of contact points
+        [probable_next_conditions{3}, errortan(3)] = get_next_step(previous_conditions, contact_points, dt, spatial_step, ...
+                spatial_tol, PROBLEM_CONSTANTS);
+
+        if abs(errortan(3)) < tan_tol % If almost no error, we accept the solution
+            current_conditions = probable_next_conditions{3};
+            previous_conditions = {previous_conditions{2:end} probable_next_conditions{3}};
+        else % If there is some error, we try with diffferent contact points
+            % Lets try with one more point
+            [probable_next_conditions{4}, errortan(4)] = get_next_step(previous_conditions, contact_points + 1, dt, spatial_step, ...
+            spatial_tol, PROBLEM_CONSTANTS);
+            % Lets try with one point less
+            [probable_next_conditions{2}, errortan(2)] = get_next_step(previous_conditions, contact_points - 1, dt, spatial_step, ...
             spatial_tol, PROBLEM_CONSTANTS);
 
-    if abs(errortan(3)) < tan_tol % If almost no error, we accept the solution
-        current_conditions = probable_next_conditions(3);
-        previous_conditions = [previous_conditions(2:end), probable_next_conditions(3)];
-    else % If there is some error, we try with diffferent contact points
-        % Lets try with one more point
-        [probable_next_conditions{4}, errortan(4)] = get_next_step(previous_conditions, contact_points + 1, dt, spatial_step, ...
-        spatial_tol, PROBLEM_CONSTANTS);
-        % Lets try with one point less
-        [probable_next_conditions{2}, errortan(2)] = get_next_step(previous_conditions, contact_points - 1, dt, spatial_step, ...
-        spatial_tol, PROBLEM_CONSTANTS);
+            if (abs(errortan(3)) > abs(errortan(4)) ||  (abs(errortan(3)) > abs(errortan(2))))
+                if abs(errortan(4)) <= abs(errortan(2))
+                    % Now lets check with one more point to be sure
+                    [~, errortan(5)] = get_next_step(previous_conditions, contact_points + 2, dt, spatial_step, ...
+                    spatial_tol, PROBLEM_CONSTANTS);
 
-        if (abs(errortan(3)) > abs(errortan(4)) ||  (abs(errortan(3)) > abs(errortan(2))))
-            if abs(errortan(4)) <= abs(errortan(2))
-                % Now lets check with one more point to be sure
-                [~, errortan(5)] = get_next_step(previous_conditions, contact_points + 2, dt, spatial_step, ...
-                spatial_tol, PROBLEM_CONSTANTS);
-
-                if abs(errortan(4)) < abs(errortan(5)) && errortan(4) < tan_tol
-                    % Accept new data 
-                    previous_conditions = {previous_conditions{2:end}, probable_next_conditions{4}};
-                    current_conditions  = probable_next_conditions{4};
-                    contact_points      = contact_points + 1;
+                    if abs(errortan(4)) < abs(errortan(5)) && errortan(4) < tan_tol
+                        % Accept new data 
+                        previous_conditions = {previous_conditions{2:end} probable_next_conditions{4}};
+                        current_conditions  = probable_next_conditions{4};
+                        contact_points      = contact_points + 1;
+                    else
+                        recalculate = true;
+                    end
                 else
-                    recalculate = true;
-                end
-            else
-                % now lets check if errortan is good enough with one point less
-                [~, errortan(1)] = get_next_step(previous_conditions, contact_points - 2, dt, spatial_step, ...
-                spatial_tol, PROBLEM_CONSTANTS);
+                    % now lets check if errortan is good enough with one point less
+                    [~, errortan(1)] = get_next_step(previous_conditions, contact_points - 2, dt, spatial_step, ...
+                    spatial_tol, PROBLEM_CONSTANTS);
 
-                if abs(errortan(2)) < abs(errortan(1)) && errortan[2] < tan_tol
+                    if abs(errortan(2)) < abs(errortan(1)) && errortan(2) < tan_tol
+                        % Accept new data
+                        previous_conditions = {previous_conditions{2:end} probable_next_conditions{2}};
+                        current_conditions  = probable_next_conditions{2};
+                        contact_points      = contact_points - 1;
+                    else
+                        recalculate = true;
+                    end 
+
+                end % End of errortan[4] <= errortan[2]
+            else % The same number of contact points may be the best
+                if errortan(3) == Inf % ==> All errors are infinity
+                    recalculate = true;
+                else
                     % Accept new data
-                    previous_conditions = {previous_conditions{2:end}, probable_next_conditions{2}};
-                    current_conditions  = probable_next_conditions{2};
-                    contact_points      = contact_points - 1;
+                    previous_conditions = {previous_conditions{2:end} probable_next_conditions{3}};
+                    current_conditions  = probable_next_conditions{3};
+                end
+            end
+        end % End outer if     while ( current_time < final_time)
+
+        if recalculate == true
+                dt = dt/2;
+                % Refine time step in index notation 
+                iii = iii + 1; jjj = 2 * jjj;
+            else
+                current_time = current_time + dt; jjj = jjj + 1;
+                if mod(jjj, 2) == 0 && grow_dt == true
+                    jjj = div(jjj, 2); 
+                    iii = iii - 1;
+                    % Increase time step
+                    dt = 2 * dt;
+                    % Decrease the number of time you can make dt bigger
+                    grow_dt = false;
+                end
+
+                %  TODO: Update Indexes if necessary
+
+                % TODO: % Stored data
+                
+                current_index = current_index + 1; % Point to the next space in memory 
+
+                % If we are in a multiple of max_dt, reset indexes
+                if jjj == 2^iii
+                    jjj = 0;
+                    grow_dt = true;
+                    %indexes_to_save[current_to_save] = current_index - 1;
+                    %current_to_save = current_to_save + 1;
                 else
-                    recalculate = true;
-                end 
+                    number_of_extra_indexes = number_of_extra_indexes + 1;
+                end
 
-            end % End of errortan[4] <= errortan[2]
-        else % The same number of contact points may be the best
-            if errortan(3) == Inf % ==> All errors are infinity
-                recalculate = true;
-            else
-                % Accept new data
-                previous_conditions = {previous_conditions{2:end}, probable_next_conditions{3}};
-                current_conditions  = probable_next_conditions{3};
-            end
-        end
-    end % End outer if     while ( current_time < final_time)
+                if live_plotting == true
+                    % Do some live plotting here
+                    etas = @(theta) sum(current_conditions.deformation_amplitudes ...
+                        .* arrayfun(@(idx) LEGENDRE_POLYNOMIALS{idx}(cos(theta)), 1:harmonics_qtt));
+                    
+                    EtaX = arrayfun(@(angle) sin(angle) * (1+  etas(angle)), theta);
+                    EtaY = current_conditions.center_of_mass + arrayfun(@(angle) cos(angle) * (1+  etas(angle)), theta);
+                    %figure(myFigure);
+                    cla; hold on; grid on;
+                    %plot(circleX*Lunit,(z_k+circleY)*Lunit,'k','Linewidth',1.5);
+                    %rectangle('Position', [-Lunit, (currentConditions.z_k-1)*Lunit, 2*Lunit, 2*Lunit], ...
+                    %    'Curvature', 1, 'Linewidth', 2);
+                    %Eta_k = currentConditions.Eta_k;
+                    %plot([-width*length_unit/N, width*length_unit/N], [0, 0], '--', 'Color', [.8 .8 .8], 'LineWidth', 2.5);
+                    %EtaY = [flipud(Eta_k(2:width));Eta_k(1:width)]' * Lunit;
+                    %EtaV = [flipud(u_k(2:width));u_k(1:width)]' * Vunit;
+                    plot(EtaX,EtaY, 'LineWidth',2 , 'Color', [.5 .5 .5]);
+
+                    hline(0, 'LineWidth', 1.2, 'Color', [0 0 0]);
+                    scatter(0, current_conditions.center_of_mass, 'Marker', 'x');
+                    %plot(0, Eta_k(1)*Lunit, 'Marker', 'o', 'MarkerSize', 4, ...
+                    %    'MarkerFaceColor', [.3 .3 .3], 'LineWidth', 1.5, 'Color', [.3 .3 .3]);
+                    if contactFlag == false
+                        %quiver(EtaX(1:step:end), EtaY(1:step:end), EtaU(1:step:end), EtaV(1:step:end), 0);
+                    else
+                        %quiver(EtaX(1:step:end), EtaY(1:step:end), EtaU(1:step:end), EtaV(1:step:end));
+                    end
+                   title(sprintf(" t = %-8.5f, CP = %-8g, \n v_k = %-8.5f, z_k = %-8.5f \n", ...
+                       t*time_unit, current_conditions.nb_contact_points, ...
+                            currentConditions.v_k*Vunit, currentConditions.center_of_mass * length_unit),'FontSize',16);
+                    drawnow limitrate;
+
+                else
+                    % Do some real-time variable updating here
+                end
+
+         end
+
+    end
     
-    if recalculate == true
-            dt = dt/2;
-            % Refine time step in index notation 
-            iii = iii + 1; jjj = 2 * jjj;
-        else
-            current_time = current_time + dt; jjj = jjj + 1;
-            if mod(jjj, 2) == 0 && grow_dt == true
-                jjj = div(jjj, 2); 
-                iii = iii - 1;
-                % Increase time step
-                dt = 2 * dt;
-                % Decrease the number of time you can make dt bigger
-                grow_dt = false;
-            end
-
-            %  TODO: Update Indexes if necessary
-
-            % TODO: % Stored data
-            recorded_conditions(current_index) = give_dimensions(previous_conditions(end));
-            current_index = current_index + 1; % Point to the next space in memory 
-
-            % If we are in a multiple of max_dt, reset indexes
-            if jjj == 2^iii
-                jjj = 0;
-                grow_dt = true;
-                %indexes_to_save[current_to_save] = current_index - 1;
-                %current_to_save = current_to_save + 1;
-            else
-                number_of_extra_indexes = number_of_extra_indexes + 1;
-            end
-
-            if live_plotting == true
-                % Do some live plotting here
-            else
-                % Do some real-time variable updating here
-            end
-
-     end
-
-end
+    % Post processing
+    save('simulation.mat', recorded_conditions);
 
  
     
 end
+
+
         
