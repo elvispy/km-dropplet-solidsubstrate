@@ -1,5 +1,5 @@
-function coefs = project_amplitudes(ff, harmonics_qtt, endpoints, ~) % PROBLEM CONSTANTS used to be here 
-    flag = true;
+function coefs = project_amplitudes(ff, harmonics_qtt, endpoints, PROBLEM_CONSTANTS, flag) % PROBLEM CONSTANTS used to be here 
+    %flag = true;
     if flag
         f = @(theta, idx) my_legendre(idx, cos(theta)) .* ff(theta) .* sin(theta);
         try
@@ -10,7 +10,7 @@ function coefs = project_amplitudes(ff, harmonics_qtt, endpoints, ~) % PROBLEM C
             
         coefs = arrayfun(@(idx) ...
             (2 * idx + 1)/2 * integral(@(theta) f(theta, idx), endpoints(1), endpoints(2), ...
-            'AbsTol', 1e-5, 'RelTol', 1e-3), 1:harmonics_qtt);
+            'RelTol', 5e-3), 1:harmonics_qtt);
     else
         if endpoints(2) > PROBLEM_CONSTANTS.nodes(1) || endpoints(1) < PROBLEM_CONSTANTS.nodes(end)
             [PROBLEM_CONSTANTS.nodes, PROBLEM_CONSTANTS.weights] = fclencurt(2^19+1, endpoints(1), endpoints(2));

@@ -9,6 +9,6 @@ function eta = zeta_generator(amplitudes, varargin)
     else
         warning("I'm deprecated!");
         LP = varargin{1}.LEGENDRE_POLYNOMIALS;
-        eta = @(theta) arrayfun(@(ang) sum(dot(amplitudes, arrayfun(@(idx) LP{idx}(cos(ang)), 1:order))), theta);
+        eta = @(theta) arrayfun(@(ang) sum(times(amplitudes, arrayfun(@(idx) LP{idx}(cos(ang)), 1:order))), theta);
     end
 end

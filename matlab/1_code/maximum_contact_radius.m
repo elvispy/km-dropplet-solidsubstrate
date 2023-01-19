@@ -6,11 +6,11 @@ function rmax = maximum_contact_radius(amplitudes)
     order = length(amplitudes);
     zeta = zeta_generator(amplitudes); 
     drdtheta = @(theta) cos(theta) * (1 + zeta(theta)) - ...
-        sin(theta)^2 * sum(dot(amplitudes, collectdnPl(order, cos(theta))));
+        sin(theta)^2 * sum(times(amplitudes, collectdnPl(order, cos(theta))));
 
     dr2dtheta2 = @(theta) - sin(theta) * (1 + zeta(theta)) - 2 * cos(theta) * sin(theta) * ...
-        sum(dot(amplitudes, collectdnPl(order, cos(theta))), 1) + ...
-        sin(theta)^3 .* sum(dot(amplitudes, collectdnPl(order, cos(theta), 2)), 1);
+        sum(times(amplitudes, collectdnPl(order, cos(theta))), 1) + ...
+        sin(theta)^3 .* sum(times(amplitudes, collectdnPl(order, cos(theta), 2)), 1);
 
     theta = pi/2 + pi/4;
     tol_theta = 1e-7;

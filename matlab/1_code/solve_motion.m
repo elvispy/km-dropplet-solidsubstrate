@@ -18,19 +18,15 @@ function solve_motion()
     rhoS = 1.0e-3;%%%%            % Sphere's density
     sigmaS = 72.20;%%%%%          % Sphere's Surface Tension
     g = 9.8065;%%%          % Gravitational constant
-    harmonics_qtt = 40;      % Number of harmonics to be used 
+    harmonics_qtt = 100;      % Number of harmonics to be used 
     nb_pressure_samples = nan;      % Number of intervals in contact radius (NaN = Equal to number of harmonics)
     max_dt = 1e-3;         % maximum allowed temporal time step
     angle_tol = 5/360 * 2 * pi; % Angle tolerance to accept a solution (in radians) 
-    spatial_tol = 1e-8;    % Tolerance to accept that dropplet touches the substrate
+    spatial_tol = 1e-3;    % Tolerance to accept that dropplet touches the substrate
     simulation_time = 10.0;% Maximum allowed time
     live_plotting = true;     % Whether to plot or not the live results
     
-    if isnan(nb_pressure_samples)
-        spatial_step = 1/harmonics_qtt;
-    else
-        spatial_step = 1/nb_pressure_samples;
-    end
+
 
     % Dimensionless Units
     length_unit = undisturbed_radius;
@@ -42,7 +38,6 @@ function solve_motion()
     % reynolds_nb = undisturbed_radius * velocity_unit / nu; % Reynolds' number
     mS = 4*pi*undisturbed_radius^3 * rhoS / 3;
     mass_unit = rhoS * length_unit^3;
-    
     
     % % Initial conditions
     % Set dropplet's sphere height initial conditions
@@ -76,6 +71,15 @@ function solve_motion()
         dt = 0.01; 
     else 
         dt = max_dt/time_unit; 
+    end
+    
+    % Setting dr
+    if isnan(nb_pressure_samples)
+        f = @(t) -t^2/(2 * froude_nb) + initial_velocity * t + initial_height;
+        spatial_step = sqrt(f(0)^2 - f(dt)^2);
+        %spatial_step = 1/harmonics_qtt;
+    else
+        spatial_step = 1/nb_pressure_samples;
     end
     
     initial_time = 0;
@@ -121,25 +125,25 @@ function solve_motion()
     ODE_inverse_matrices(1, 2, :) = -0.5i ./ omegas_frequencies;
     ODE_inverse_matrices(2, 2, :) =  0.5i ./ omegas_frequencies;
     
-    syms x;
-    LEGENDRE_POLYNOMIALS = arrayfun( ...
-        @(idx) matlabFunction(legendreP(idx, x)), 1:harmonics_qtt, ...
-        'UniformOutput', false);
-    
-    LEGENDRE_DERIVATIVES = arrayfun( ...
-        @(idx) matlabFunction(diff(legendreP(idx, x), 1)), 1:harmonics_qtt,...
-        'UniformOutput', false);
-    LEGENDRE_DERIVATIVES{1} = @(x) (LEGENDRE_DERIVATIVES{1}());
-    
-    LEGENDRE_SECOND_DERIVATIVES = arrayfun( ...
-        @(idx) matlabFunction(diff(legendreP(idx, x), 2)), 1:harmonics_qtt,...
-        'UniformOutput', false);
-    LEGENDRE_SECOND_DERIVATIVES{1} = @(x) LEGENDRE_SECOND_DERIVATIVES{1}();
-    LEGENDRE_SECOND_DERIVATIVES{2} = @(x) LEGENDRE_SECOND_DERIVATIVES{2}();
-    
-    collectdnPl = @(x) arrayfun(@(idx) LEGENDRE_DERIVATIVES{idx}(x), 1:harmonics_qtt);
-    collectd2nPl = @(x) arrayfun(@(idx) LEGENDRE_SECOND_DERIVATIVES{idx}(x), 1:harmonics_qtt);
-    clear x LEGENDRE_DERIVATIVES LEGENDRE_DERIVATIVES LEGENDRE_SECOND_DERIVATIVES collectdnPl collectd2nPl;
+%     syms x;
+%     LEGENDRE_POLYNOMIALS = arrayfun( ...
+%         @(idx) matlabFunction(legendreP(idx, x)), 1:harmonics_qtt, ...
+%         'UniformOutput', false);
+%     
+%     LEGENDRE_DERIVATIVES = arrayfun( ...
+%         @(idx) matlabFunction(diff(legendreP(idx, x), 1)), 1:harmonics_qtt,...
+%         'UniformOutput', false);
+%     LEGENDRE_DERIVATIVES{1} = @(x) (LEGENDRE_DERIVATIVES{1}());
+%     
+%     LEGENDRE_SECOND_DERIVATIVES = arrayfun( ...
+%         @(idx) matlabFunction(diff(legendreP(idx, x), 2)), 1:harmonics_qtt,...
+%         'UniformOutput', false);
+%     LEGENDRE_SECOND_DERIVATIVES{1} = @(x) LEGENDRE_SECOND_DERIVATIVES{1}();
+%     LEGENDRE_SECOND_DERIVATIVES{2} = @(x) LEGENDRE_SECOND_DERIVATIVES{2}();
+%     
+%     collectdnPl = @(x) arrayfun(@(idx) LEGENDRE_DERIVATIVES{idx}(x), 1:harmonics_qtt);
+%     collectd2nPl = @(x) arrayfun(@(idx) LEGENDRE_SECOND_DERIVATIVES{idx}(x), 1:harmonics_qtt);
+%     clear x LEGENDRE_DERIVATIVES LEGENDRE_DERIVATIVES LEGENDRE_SECOND_DERIVATIVES collectdnPl collectd2nPl;
     [nodes, weights] = fclencurt(2^19+1, pi/2, pi);
     
     %names = ["froude_nb" "weber_nb" "omegas_frequencies" "ODE_matrices" "ODE_inverse_matrices"];
@@ -147,7 +151,9 @@ function solve_motion()
         "omegas_frequencies", omegas_frequencies, "ODE_matrices", ODE_matrices, ...
         "ODE_inverse_matrices", ODE_inverse_matrices, ...
         "nodes", nodes, "weights", weights, ...
-        "pressure_unit", pressure_unit);
+        "pressure_unit", pressure_unit, ...
+        "wigner3j", {precomputed_wigner(harmonics_qtt)}, ...
+        "DEBUG_FLAG", true);
         
 %         "LEGENDRE_POLYNOMIALS", {LEGENDRE_POLYNOMIALS}, ...
 %         "LEGENDRE_DERIVATIVES", {LEGENDRE_DERIVATIVES}, ...
@@ -244,7 +250,7 @@ function solve_motion()
 %     mechanical_energy_in = NaN;
 %     mechanical_energy_out = NaN; % TODO: Lab COef of restitution?
 
-
+    % p = parpool(5);
     while ( current_time < final_time)
         errortan = Inf * ones(5, 1);
         recalculate = false;
@@ -253,7 +259,7 @@ function solve_motion()
         [probable_next_conditions{3}, errortan(3)] = get_next_step(previous_conditions, contact_points, dt, spatial_step, ...
                 spatial_tol, PROBLEM_CONSTANTS);
 
-        if abs(errortan(3)) < tan_tol % If almost no error, we accept the solution
+        if abs(errortan(3)) < tan_tol * 1e-2 % If almost no error, we accept the solution
             current_conditions = probable_next_conditions{3};
             previous_conditions = {previous_conditions{2:end} probable_next_conditions{3}};
         else % If there is some error, we try with diffferent contact points
@@ -337,35 +343,12 @@ function solve_motion()
 
                 if live_plotting == true
                     % Do some live plotting here
-                    etas = @(theta) sum(current_conditions.deformation_amplitudes ...
-                        .* arrayfun(@(idx) LEGENDRE_POLYNOMIALS{idx}(cos(theta)), 1:harmonics_qtt));
-                    
-                    EtaX = arrayfun(@(angle) sin(angle) * (1+  etas(angle)), theta);
-                    EtaY = current_conditions.center_of_mass + arrayfun(@(angle) cos(angle) * (1+  etas(angle)), theta);
-                    %figure(myFigure);
-                    cla; hold on; grid on;
-                    %plot(circleX*Lunit,(z_k+circleY)*Lunit,'k','Linewidth',1.5);
-                    %rectangle('Position', [-Lunit, (currentConditions.z_k-1)*Lunit, 2*Lunit, 2*Lunit], ...
-                    %    'Curvature', 1, 'Linewidth', 2);
-                    %Eta_k = currentConditions.Eta_k;
-                    %plot([-width*length_unit/N, width*length_unit/N], [0, 0], '--', 'Color', [.8 .8 .8], 'LineWidth', 2.5);
-                    %EtaY = [flipud(Eta_k(2:width));Eta_k(1:width)]' * Lunit;
-                    %EtaV = [flipud(u_k(2:width));u_k(1:width)]' * Vunit;
-                    plot(EtaX,EtaY, 'LineWidth',2 , 'Color', [.5 .5 .5]);
-
-                    hline(0, 'LineWidth', 1.2, 'Color', [0 0 0]);
-                    scatter(0, current_conditions.center_of_mass, 'Marker', 'x');
-                    %plot(0, Eta_k(1)*Lunit, 'Marker', 'o', 'MarkerSize', 4, ...
-                    %    'MarkerFaceColor', [.3 .3 .3], 'LineWidth', 1.5, 'Color', [.3 .3 .3]);
-                    if contactFlag == false
-                        %quiver(EtaX(1:step:end), EtaY(1:step:end), EtaU(1:step:end), EtaV(1:step:end), 0);
-                    else
-                        %quiver(EtaX(1:step:end), EtaY(1:step:end), EtaU(1:step:end), EtaV(1:step:end));
-                    end
-                   title(sprintf(" t = %-8.5f, CP = %-8g, \n v_k = %-8.5f, z_k = %-8.5f \n", ...
-                       t*time_unit, current_conditions.nb_contact_points, ...
-                            currentConditions.v_k*Vunit, currentConditions.center_of_mass * length_unit),'FontSize',16);
-                    drawnow limitrate;
+                   
+                    plot_title = sprintf(" t = %-8.5f, CP = %-8g, \n v_k = %-8.5f, z_k = %-8.5f \n", ...
+                       current_time * time_unit, current_conditions.number_contact_points, ...
+                            current_conditions.center_of_mass_velocity * velocity_unit, ...
+                            current_conditions.center_of_mass* length_unit);
+                    plot_condition(1, current_conditions, spatial_step, 10, plot_title);
 
                 else
                     % Do some real-time variable updating here
@@ -376,7 +359,7 @@ function solve_motion()
     end
     
     % Post processing
-    save('simulation.mat', recorded_conditions);
+    %save('simulation.mat', recorded_conditions);
 
  
     

@@ -5,7 +5,7 @@ function tt = theta_from_cylindrical(r, amplitudes)
     zeta = zeta_generator(amplitudes);
     
     % Derivative of the function
-    f_prime = @(theta) cos(theta) .* (1 + zeta(theta)) - sin(theta).^2 .* sum(dot(amplitudes, collectdnPl(length(amplitudes), cos(theta))), 1);
+    f_prime = @(theta) cos(theta) .* (1 + zeta(theta)) - sin(theta).^2 .* sum(times(amplitudes, collectdnPl(length(amplitudes), cos(theta))), 1);
     
     % Function to be minimized00
     f_objective = @(theta) sin(theta) * (1 + zeta(theta)) - r;
