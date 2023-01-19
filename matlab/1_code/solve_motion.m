@@ -20,7 +20,7 @@ function solve_motion()
     g = 9.8065;%%%          % Gravitational constant
     harmonics_qtt = 100;      % Number of harmonics to be used 
     nb_pressure_samples = nan;      % Number of intervals in contact radius (NaN = Equal to number of harmonics)
-    max_dt = 1e-3;         % maximum allowed temporal time step
+    max_dt = 5e-3;         % maximum allowed temporal time step
     angle_tol = 5/360 * 2 * pi; % Angle tolerance to accept a solution (in radians) 
     spatial_tol = 1e-3;    % Tolerance to accept that dropplet touches the substrate
     simulation_time = 10.0;% Maximum allowed time
@@ -250,8 +250,10 @@ function solve_motion()
 %     mechanical_energy_in = NaN;
 %     mechanical_energy_out = NaN; % TODO: Lab COef of restitution?
 
+    indexes_to_save = zeros(maximum_index, 1); indexes_to_save(1) = 1;
+    current_to_save = 2;
     % p = parpool(5);
-    while ( current_time < final_time)
+    while ( current_time < final_time) && current_index < 4
         errortan = Inf * ones(5, 1);
         recalculate = false;
 
@@ -328,15 +330,15 @@ function solve_motion()
                 %  TODO: Update Indexes if necessary
 
                 % TODO: % Stored data
-                
+                recorded_conditions{current_index} = give_dimensions(current_conditions);
                 current_index = current_index + 1; % Point to the next space in memory 
 
                 % If we are in a multiple of max_dt, reset indexes
                 if jjj == 2^iii
                     jjj = 0;
                     grow_dt = true;
-                    %indexes_to_save[current_to_save] = current_index - 1;
-                    %current_to_save = current_to_save + 1;
+                    indexes_to_save(current_to_save) = current_index - 1;
+                    current_to_save = current_to_save + 1;
                 else
                     number_of_extra_indexes = number_of_extra_indexes + 1;
                 end
@@ -359,7 +361,9 @@ function solve_motion()
     end
     
     % Post processing
-    %save('simulation.mat', recorded_conditions);
+    indexes_to_save = indexes_to_save(1:(current_to_save-1));
+    recorded_conditions = recorded_conditions(indexes_to_save);
+    save('simulation.mat', 'recorded_conditions');
 
  
     

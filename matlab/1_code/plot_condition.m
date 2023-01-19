@@ -10,9 +10,12 @@ function plot_condition(idx, conditions, varargin)
     sample = [linspace(0, cut, 50), linspace(cut, pi, 100)];
     arrX = sin(sample);
     arrY = cos(sample);
-    etas = zeta_generator(conditions.deformation_amplitudes);
-    height = conditions.center_of_mass;
-    
+    etas = zeta_generator(conditions);
+    if isstruct(conditions)
+        height = conditions.center_of_mass;
+    else
+        height = 0;
+    end
     EtaX = arrayfun(@(angle) sin(angle) * (1+  etas(angle)), sample);
     EtaY = height + arrayfun(@(angle) cos(angle) .* (1+  etas(angle)), sample);
     
@@ -32,7 +35,7 @@ function plot_condition(idx, conditions, varargin)
         quiver(EtaX, EtaY, -ps(sample) .* arrX, -ps(sample) .* arrY);
     end
     
-    if nargin > 2
+    if nargin > 2 && isstruct(conditions)
         x = dr * max(conditions.number_contact_points, 1);
     else
         x = 0.1;
@@ -48,7 +51,7 @@ function plot_condition(idx, conditions, varargin)
     %ylim([-0.1, 2.5]);
     yline(0, 'r', 'LineWidth', 2);
     
-    if nargin > 4 && idx == 2
+    if nargin > 4 && idx == 2 && isstruct(conditions)
         ss = varargin{3};
         
         s = sprintf("Attempting to fit the solution with %d contact points. Previous contact points: %d. \n Iteration Nº: %d", ...

@@ -332,7 +332,7 @@ function [probable_next_conditions, is_it_acceptable, previous_tentatives] = ...
     
     % you cant have negative pressures
     % assert( min(pressure_samples) >= 0,  "Negative pressures!");
-    previous_tentatives = {previous_tentatives{1:end} struct("heights", heights,"pressure_samples", pressure_samples)};
+    previous_tentatives = {previous_tentatives{1:end} struct("heights", heights,"pressure_samples", pressure_samples, "error", norm(heights))};
     
     % If some height is out of bound, try to adapt pressure coefficients
     if is_it_acceptable == false
@@ -375,7 +375,7 @@ function [probable_next_conditions, is_it_acceptable, previous_tentatives] = ...
 
         % Interpolate linearly between pressure points
 
-        f = @(r) (r <= contact_radius) .* interp1(contact_radius * linspace(0, 1, NB_SAMPLES), pressure_perturbation, r - (r > contact_radius) .* r); %    1 + (harmonics_qtt-1)/rmax * r);
+        f = @(r) interp1(contact_radius * linspace(0, 1, NB_SAMPLES), pressure_perturbation, r, 0); 
         ps = @(theta) f(r_from_spherical(theta, probable_next_conditions.deformation_amplitudes));
 
         projected_pressure_perturbations = project_amplitudes(ps, harmonics_qtt, [theta_max, pi], PROBLEM_CONSTANTS, true);

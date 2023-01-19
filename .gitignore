@@ -31,3 +31,6 @@ julia/1_code/global_testing.jl
 julia/1_code/test.jl
 **/.vscode/
 **/.CondaPkg/
+
+# Matlab Autosave files
+*.asv
