@@ -46,9 +46,9 @@ function [probable_next_conditions, errortan] = ...
         elseif new_number_contact_points > 0
             % Save previous tentative
             if norm(probable_next_conditions.pressure_amplitudes) > 0
-                [~, ~, previous_tentatives] = ...
+                [~, ~, previous_tentatives, ~] = ...
                         update_tentative_heuristic(probable_next_conditions, previous_conditions, ...
-                            dr, dt, spatial_tol, PROBLEM_CONSTANTS, {});
+                            dr, dt, spatial_tol, PROBLEM_CONSTANTS, {}, []);
             else
                 previous_tentatives = {};
             end
@@ -58,6 +58,7 @@ function [probable_next_conditions, errortan] = ...
                 NaN, NaN, NaN, previous_conditions{end}.pressure_amplitudes, NaN, NaN, NaN, NaN, NaN);
             
             iteration = 0;
+            idxs = [1, 2];
             %previous_tentatives = {};
             %is_it_acceptable = true;
             while iteration < 50  % 100
@@ -71,9 +72,9 @@ function [probable_next_conditions, errortan] = ...
                        struct("previous_contact_points", previous_conditions{end}.number_contact_points, "iteration", iteration));
                 end
                 %if new_number_contact_points > 0 % Only update pressures if you expect to have pressure
-                    [probable_next_conditions, is_it_acceptable, previous_tentatives] = ...
+                        [probable_next_conditions, is_it_acceptable, previous_tentatives, idxs] = ...
                         update_tentative_heuristic(probable_next_conditions, previous_conditions, ...
-                            dr, dt, spatial_tol, PROBLEM_CONSTANTS, previous_tentatives);
+                            dr, dt, spatial_tol, PROBLEM_CONSTANTS, previous_tentatives, idxs);
                 %end
 
                 if is_it_acceptable == true; break;  end
@@ -299,9 +300,9 @@ function new_probable_next_conditions = advance_conditions_dep(probable_next_con
 end
 
 
-function [probable_next_conditions, is_it_acceptable, previous_tentatives] = ...
+function [probable_next_conditions, is_it_acceptable, previous_tentatives, idxs] = ...
     update_tentative_heuristic(probable_next_conditions, ~, ... % previous_conditions in place of ~
-    dr, ~, spatial_tol, PROBLEM_CONSTANTS, previous_tentatives) % dt in place of ~
+    dr, ~, spatial_tol, PROBLEM_CONSTANTS, previous_tentatives, idxs) % dt in place of ~
     
     harmonics_qtt = probable_next_conditions.nb_harmonics;
     NB_SAMPLES = harmonics_qtt + 1;
@@ -332,8 +333,22 @@ function [probable_next_conditions, is_it_acceptable, previous_tentatives] = ...
     
     % you cant have negative pressures
     % assert( min(pressure_samples) >= 0,  "Negative pressures!");
-    previous_tentatives = {previous_tentatives{1:end} struct("heights", heights,"pressure_samples", pressure_samples, "error", norm(heights))};
-    
+    err = norm(heights);
+    added = false;
+    if length(previous_tentatives) < 2 || err < previous_tentatives{end}.error || err < previous_tentatives{end-1}.error
+        previous_tentatives = {previous_tentatives{1:end} struct("heights", heights,"pressure_samples", pressure_samples, "error", err)};
+        
+        n = length(previous_tentatives);
+        if n > 2
+            added = true;
+            if err < previous_tentatives{idxs(1)}.error && previous_tentatives{idxs(1)}.error > previous_tentatives{idxs(2)}.error
+                idxs(1) = length(previous_tentatives);
+            elseif err < previous_tentatives{idxs(2)}.error
+                idxs(2) = length(previous_tentatives);    
+            end
+        end
+    end
+        
     % If some height is out of bound, try to adapt pressure coefficients
     if is_it_acceptable == false
         % Heuristic tentative: Increase of reduce the pressure at given points to fit flat area.
@@ -348,34 +363,40 @@ function [probable_next_conditions, is_it_acceptable, previous_tentatives] = ...
 
         if length(previous_tentatives) < 2
             % Modify pressure amplitudes so as to try to flatten the surface
-            pressure_perturbation = times(pressure_samples, 0.2 * ((heights >= 0) - 0.5)) ...%arrayfun(@(h) 0.1 * (h+eps)/abs(h+eps), heights)) + ...
-                + (heights <-spatial_tol) .* (abs(pressure_samples) < 1e-3/PROBLEM_CONSTANTS.pressure_unit) *  0.1/PROBLEM_CONSTANTS.pressure_unit ...
+            pressure_perturbation = times(((heights >= 0) - 0.5), -0.2 * abs(pressure_samples)) ...%arrayfun(@(h) 0.1 * (h+eps)/abs(h+eps), heights)) + ...
+                + (heights <-spatial_tol) .* (abs(pressure_samples) < 1e-3/PROBLEM_CONSTANTS.pressure_unit) *  .05/PROBLEM_CONSTANTS.pressure_unit ...
                 + (heights > spatial_tol) .* (abs(pressure_samples) < 1e-3/PROBLEM_CONSTANTS.pressure_unit) * -.01/PROBLEM_CONSTANTS.pressure_unit ; %arrayfun(@(idx) (heights(idx) < 0) *  ( abs(pressure_samples(idx)) < 1e-8) * 0.01, 1:harmonics_qtt);
             %theta = theta_from_cylindrical(rmax*(ii-1)/(harmonics_qtt-1), probable_next_conditions.deformation_amplitudes)
             %%-pressure_perturbation(end) = 0;
         else
             % First tentative: assume linearity between the last two tentatives
             % This interpolator tries to 
-            interpolator = @(d1, d2, idx)  ... 
-                 ((d2.heights(idx) * d1.pressure_samples(idx) ...
-                - d1.heights(idx) * d2.pressure_samples(idx)) / ...
-                 (d2.heights(idx) - d1.heights(idx)));
-            d1 = previous_tentatives{end};
-            d2 = previous_tentatives{end - 1};
+            
+            if added == false %%&& rand() > 0.4
+                pressure_perturbation = times(-abs(previous_tentatives{idxs(2)}.pressure_samples), rand()/15 * ((heights >= 0) - 0.5));
+            else
+                interpolator = @(d1, d2, idx)  ... 
+                     ((d2.heights(idx) * d1.pressure_samples(idx) ...
+                    - d1.heights(idx) * d2.pressure_samples(idx)) / ...
+                     (d2.heights(idx) - d1.heights(idx)));
+                d1 = previous_tentatives{idxs(1)};
+                d2 = previous_tentatives{idxs(2)};
 
-            % We may avoid substracting here
-            pressure_perturbation = (abs(heights) > spatial_tol) .* ...
-                (arrayfun(@(idx) interpolator(d1, d2, idx), 1:NB_SAMPLES) - previous_tentatives{end}.pressure_samples);
-            idxs = and(heights < -spatial_tol, pressure_perturbation < 0);
-            pressure_perturbation(idxs) = abs(pressure_samples(idxs)) * 1.1;
-            %%-pressure_perturbation(end) = 0;
+                % We only apply perturbe pressure where the heights is
+                % unnacceptable, 
+                pressure_perturbation = (abs(heights) > spatial_tol/5) .* ...
+                    (arrayfun(@(idx) interpolator(d1, d2, idx), 1:NB_SAMPLES) - pressure_samples);
+                idxs_2 = and(heights < -spatial_tol, pressure_perturbation < 0);
+                pressure_perturbation(idxs_2) = abs(pressure_samples(idxs_2)) * rand()/15;
+                %%-pressure_perturbation(end) = 0;
+            end
         end
 
         % Compute new pressure coefficients:
 
         % Interpolate linearly between pressure points
 
-        f = @(r) interp1(contact_radius * linspace(0, 1, NB_SAMPLES), pressure_perturbation, r, 0); 
+        f = @(r) interp1(contact_radius * linspace(0, 1, NB_SAMPLES), pressure_perturbation, r, 'linear',  0); 
         ps = @(theta) f(r_from_spherical(theta, probable_next_conditions.deformation_amplitudes));
 
         projected_pressure_perturbations = project_amplitudes(ps, harmonics_qtt, [theta_max, pi], PROBLEM_CONSTANTS, true);

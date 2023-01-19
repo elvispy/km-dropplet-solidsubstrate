@@ -10,20 +10,20 @@ function solve_motion()
 
     %% Handling default arguments. All units are in cgs.
     
-    undisturbed_radius = .238;  % Radius of the undeformed spherical sphere 
+    undisturbed_radius = .1;  % Radius of the undeformed spherical sphere 
     initial_height = Inf;    % Initial position of the sphere center of mass of the sphere (Inf = start barely touching)
     initial_velocity = -.5; % Initial velocity of the sphere 
     initial_amplitudes = Inf; % Initial amplitudes of the dropplet (Default = undisturbed) OBS: First index is A_1
     amplitudes_velocities = [];
     rhoS = 1.0e-3;%%%%            % Sphere's density
     sigmaS = 72.20;%%%%%          % Sphere's Surface Tension
-    g = 9.8065;%%%          % Gravitational constant
+    g = 9.8065e+2;%%%          % Gravitational constant
     harmonics_qtt = 100;      % Number of harmonics to be used 
     nb_pressure_samples = nan;      % Number of intervals in contact radius (NaN = Equal to number of harmonics)
     max_dt = 5e-3;         % maximum allowed temporal time step
     angle_tol = 5/360 * 2 * pi; % Angle tolerance to accept a solution (in radians) 
     spatial_tol = 1e-3;    % Tolerance to accept that dropplet touches the substrate
-    simulation_time = 10.0;% Maximum allowed time
+    simulation_time = 2.0;% Maximum allowed time
     live_plotting = true;     % Whether to plot or not the live results
     
 
@@ -76,7 +76,7 @@ function solve_motion()
     % Setting dr
     if isnan(nb_pressure_samples)
         f = @(t) -t^2/(2 * froude_nb) + initial_velocity * t + initial_height;
-        spatial_step = sqrt(f(0)^2 - f(dt)^2);
+        spatial_step = sqrt(f(0)^2 - f(dt)^2)/2;
         %spatial_step = 1/harmonics_qtt;
     else
         spatial_step = 1/nb_pressure_samples;
@@ -205,19 +205,6 @@ function solve_motion()
 
     % Create logging file
 
-    if live_plotting == true
-        %plot_width = ceil(3 * length_unit);
-        %xplot = linspace(0, plot_width/N, plot_width);
-        %eta_x = [-xplot(end:-1:2); xplot] * length_unit;
-        % ?U  = zeros(1, 2 * plot_width - 1);
-        %step = ceil(Int64, N/15);
-
-        theta = linspace(0, 2*pi, 500);
-        %circleX = length_unit * sin(theta);
-        %circleY = length_unit * cos(theta);
-        
-        
-    end
 
    % % Preparing post-processing
    % TODO: Write post processing variables
@@ -233,17 +220,7 @@ function solve_motion()
         X.center_of_mass * length_unit, ...
         X.center_of_mass_velocity * velocity_unit, ...
         X.number_contact_points); 
-%     give_dimensions(X::ProblemConditions) = ProblemConditions(
-%         X.nb_harmonics,
-%         X.deformation_amplitudes * length_unit,
-%         X.deformation_velocities * velocity_unit,
-%         X.pressure_amplitudes * (mass_unit * length_unit / (time_unit^2 * length_unit^2)),
-%         X.current_time * time_unit,
-%         X.dt * time_unit,
-%         X.center_of_mass * length_unit,
-%         X.center_of_mass_velocity * velocity_unit,
-%         X.number_contact_points
-%     );
+
      recorded_conditions{1} = give_dimensions(previous_conditions{end});
 %     
 %    %  Coefficient of restitution
@@ -253,7 +230,7 @@ function solve_motion()
     indexes_to_save = zeros(maximum_index, 1); indexes_to_save(1) = 1;
     current_to_save = 2;
     % p = parpool(5);
-    while ( current_time < final_time) && current_index < 4
+    while ( current_time < final_time) 
         errortan = Inf * ones(5, 1);
         recalculate = false;
 
